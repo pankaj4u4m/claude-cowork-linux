@@ -57,6 +57,7 @@ function buildEventChannels() {
 /**
  * Emit a LocalAgentModeSessions event to all renderer webContents.
  * @param {object} payload - The event payload (must include type and sessionId)
+ * @returns {number} - Number of successful dispatches
  */
 function emitLocalAgentEvent(payload) {
   try {
@@ -67,7 +68,7 @@ function emitLocalAgentEvent(payload) {
 
     if (allContents.length === 0) {
       console.warn(`${LOG_PREFIX} No webContents available for event dispatch`);
-      return;
+      return 0;
     }
 
     let dispatched = 0;
@@ -83,15 +84,23 @@ function emitLocalAgentEvent(payload) {
       }
     }
 
+    // Log when all dispatches fail
+    if (dispatched === 0) {
+      console.warn(`${LOG_PREFIX} Failed to dispatch ${payload.type} for ${payload.sessionId || '?'} to any target`);
+    }
+
     // Only log non-spammy events at info level
     const isSpammy = payload.type === 'streamEvent' || payload.type === 'toolProgress';
-    if (!isSpammy) {
+    if (!isSpammy && dispatched > 0) {
       console.log(
         `${LOG_PREFIX} Emitted ${payload.type} for ${payload.sessionId || '?'} to ${dispatched} targets`
       );
     }
+
+    return dispatched;
   } catch (e) {
     console.error(`${LOG_PREFIX} Failed to emit event:`, e.message);
+    return 0;
   }
 }
 
