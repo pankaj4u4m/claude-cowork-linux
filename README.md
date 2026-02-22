@@ -87,7 +87,7 @@ The installer will:
 ├─────────────────────────────────────────────────────────────────┤
 │  Main Process (index.js)                                        │
 │  ├── Platform headers: darwin/14.0 (spoofed)                    │
-│  ├── wj() function: patched for Linux support                   │
+│  ├── Platform gate: patched for Linux support                    │
 │  └── LocalAgentModeSessionManager                               │
 ├─────────────────────────────────────────────────────────────────┤
 │  @ant/claude-swift (STUBBED)                                    │
@@ -153,13 +153,7 @@ This makes the server think we're on macOS 14 (Sonoma), enabling Cowork features
 <details>
 <summary><strong>2. Platform Gate Bypass</strong></summary>
 
-The `wj()` function checks if Cowork is supported. We patch it to return `{status: "supported"}` for Linux:
-
-```javascript
-if (process.platform === 'linux') {
-  return { status: "supported" };
-}
-```
+The platform-gate function (minified name changes per build — `xPt()` in v1.1.3963, `wj()` in older builds) checks if Cowork is supported. `patches/enable-cowork.py` finds it automatically and replaces it to unconditionally return `{status: "supported"}`.
 
 </details>
 
@@ -221,7 +215,7 @@ claude-cowork-linux/
 ├── config/
 │   └── hyprland/claude.conf            # Optional: Hyprland window rules
 ├── patches/
-│   └── enable-cowork.py               # Patches wj() to return {status:"supported"}
+│   └── enable-cowork.py               # Patches platform gate to return {status:"supported"}
 ├── .github/assets/                     # README icons and hero image
 ├── linux-loader.js                     # Entry point: platform spoofing, IPC setup, session lifecycle
 ├── install.sh                          # One-click installer: downloads DMG, deploys stubs
@@ -286,12 +280,10 @@ cp -r stubs/@ant/* linux-app-extracted/node_modules/@ant/
 <details>
 <summary><strong>3. Patch index.js</strong></summary>
 
-Edit `linux-app-extracted/.vite/build/index.js` and find the `wj()` function. Add this at the start:
+Run the cowork patch (auto-detects the minified function name):
 
-```javascript
-if (process.platform === 'linux') {
-  return { status: "supported" };
-}
+```bash
+python3 patches/enable-cowork.py linux-app-extracted/.vite/build/index.js
 ```
 
 </details>
@@ -330,8 +322,8 @@ npm install electron
 Check that all 3 patches are present in `linux-app-extracted/.vite/build/index.js`:
 
 ```bash
-# 1. Platform support (wj function)
-grep -q 'if(process.platform==="linux")return{status:"supported"}' linux-app-extracted/.vite/build/index.js && echo "✓ Patch 1" || echo "✗ Patch 1 missing"
+# 1. Platform gate (cowork patch marker)
+grep -q 'cowork-patched' linux-app-extracted/.vite/build/index.js && echo "✓ Patch 1" || echo "✗ Patch 1 missing"
 
 # 2. IPC origin validation (Q7 function)
 grep -q 'process.platform==="linux"' linux-app-extracted/.vite/build/index.js && echo "✓ Patch 2" || echo "✗ Patch 2 missing"

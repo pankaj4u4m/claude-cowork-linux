@@ -12,8 +12,8 @@ if [[ -x "./squashfs-root/usr/lib/node_modules/electron/dist/electron" ]]; then
   ASAR_FILE="squashfs-root/usr/lib/node_modules/electron/dist/resources/app.asar"
 elif command -v electron >/dev/null 2>&1; then
   ELECTRON_BIN="$(command -v electron)"
-  ASAR_FILE="$SCRIPT_DIR/.asar-cache/app.asar"
-  mkdir -p "$SCRIPT_DIR/.asar-cache"
+  ASAR_FILE=".asar-cache/app.asar"
+  mkdir -p ".asar-cache"
 else
   echo "ERROR: No electron binary found. Install electron or place an AppImage in squashfs-root/"
   exit 1
