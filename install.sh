@@ -293,9 +293,9 @@ download_dmg() {
 
     # Try primary URL first
     if curl -fSL --progress-bar -o "$dmg_path" "$DMG_URL_PRIMARY" 2>/dev/null; then
-        log_success "Downloaded from primary CDN"
+        log_success "Downloaded latest release (followed redirect)"
     elif curl -fSL --progress-bar -o "$dmg_path" "$DMG_URL_FALLBACK" 2>/dev/null; then
-        log_success "Downloaded from fallback URL"
+        log_success "Downloaded from fallback CDN"
     else
         log_error "Failed to download Claude DMG"
         log_info ""
