@@ -350,6 +350,11 @@ extract_asar() {
 
     local asar_file="$claude_app/Contents/Resources/app.asar"
     if [[ ! -f "$asar_file" ]]; then
+        log_error "app.asar not found at: $asar_file"
+        log_info "Contents of Resources dir:"
+        ls "$claude_app/Contents/Resources/" 2>/dev/null | head -20 || log_warn "(empty or missing)"
+        log_info "Top-level extract dir:"
+        ls "$(dirname "$claude_app")" 2>/dev/null | head -10
         die "app.asar not found"
     fi
 
