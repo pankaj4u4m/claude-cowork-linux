@@ -55,5 +55,6 @@ exec "$ELECTRON_BIN" \
   "./${ASAR_FILE}" \
   --no-sandbox \
   --password-store=gnome-libsecret \
+  --enable-features=GlobalShortcutsPortal \
   "$@" \
   2>&1 | tee -a ~/.local/share/claude-cowork/logs/startup.log

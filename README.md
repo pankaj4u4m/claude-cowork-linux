@@ -404,6 +404,15 @@ Ensure the stub has methods on the `this.vm` object, not just the class.
 
 </details>
 
+<details>
+<summary><strong>Global shortcuts don't work on Wayland (GNOME)</strong></summary>
+
+The app enables `GlobalShortcutsPortal` for Wayland global shortcut support via `xdg-desktop-portal`. This works on **KDE Plasma** and **Hyprland** but **not on GNOME** — `xdg-desktop-portal-gnome` has not implemented the GlobalShortcuts portal yet.
+
+**Workaround for GNOME Wayland users:** Set a custom shortcut in GNOME Settings > Keyboard > Custom Shortcuts to launch `claude-desktop`.
+
+</details>
+
 ---
 
 ## ![](.github/assets/icons/console-24x24.png) Development

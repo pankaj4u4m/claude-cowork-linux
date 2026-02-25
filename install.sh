@@ -310,7 +310,12 @@ extract_dmg() {
     # Extract DMG
     log_info "Extracting DMG..." >&2
     local extract_dir="$WORK_DIR/extract"
-    7z x -y -o"$extract_dir" "$dmg_path" >/dev/null 2>&1 || die "Failed to extract DMG"
+    local seven_z_exit=0
+    7z x -y -o"$extract_dir" "$dmg_path" >/dev/null 2>&1 || seven_z_exit=$?
+    # 7z exit 1 = warning (e.g. "Dangerous link path" for /Applications symlink)
+    if [[ $seven_z_exit -gt 1 ]]; then
+        die "Failed to extract DMG (7z exit code: $seven_z_exit)"
+    fi
 
     # Find Claude.app and app.asar
     local claude_app
@@ -333,6 +338,18 @@ extract_dmg() {
     if [[ -d "$unpacked" ]]; then
         cp -r "$unpacked"/* "$target_dir/" 2>/dev/null || true
     fi
+
+    # Copy resources/ from DMG (i18n, icons, etc.) excluding the asar itself
+    local resources_dir="$claude_app/Contents/Resources"
+    mkdir -p "$target_dir/resources"
+    for item in "$resources_dir"/*; do
+        local name
+        name=$(basename "$item")
+        case "$name" in
+            app.asar|app.asar.unpacked) continue ;;
+        esac
+        cp -r "$item" "$target_dir/resources/$name" 2>/dev/null || true
+    done
 
     log_success "Extracted app to linux-app-extracted/"
 }

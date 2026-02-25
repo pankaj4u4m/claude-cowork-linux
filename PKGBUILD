@@ -115,6 +115,18 @@ build() {
         cp -r "$_unpacked"/* "${srcdir}/linux-app-extracted/" 2>/dev/null || true
     fi
 
+    # Copy resources/ from DMG (i18n, icons, etc.) excluding the asar itself
+    local _resources_dir="${_claude_app}/Contents/Resources"
+    mkdir -p "${srcdir}/linux-app-extracted/resources"
+    for item in "$_resources_dir"/*; do
+        local name
+        name=$(basename "$item")
+        case "$name" in
+            app.asar|app.asar.unpacked) continue ;;
+        esac
+        cp -r "$item" "${srcdir}/linux-app-extracted/resources/$name" 2>/dev/null || true
+    done
+
     # Bake stubs into node_modules
     mkdir -p "${srcdir}/linux-app-extracted/node_modules/@ant/claude-swift/js"
     mkdir -p "${srcdir}/linux-app-extracted/node_modules/@ant/claude-native"
@@ -156,7 +168,8 @@ if [[ -n "$WAYLAND_DISPLAY" ]] || [[ "$XDG_SESSION_TYPE" == "wayland" ]]; then
 fi
 
 exec electron /usr/lib/claude-cowork/app.asar \
-    --no-sandbox --password-store=gnome-libsecret "$@"
+    --no-sandbox --password-store=gnome-libsecret \
+    --enable-features=GlobalShortcutsPortal "$@"
 EOF
 
     # Install desktop entry
