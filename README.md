@@ -20,7 +20,7 @@
 
 ## ![](.github/assets/icons/info-24x24.png) Overview
 
-Claude Cowork is a special Claude Desktop build that works inside a folder you point it at—it reads, writes, and organizes files there while it runs a plan. Cowork is currently a **macOS-only preview** backed by a sandboxed Linux VM; this repo reverse-engineers and stubs the macOS-native pieces so Cowork can run directly on Linux (x86_64 + X11)—no VM and no macOS required. The stub translates VM paths to host paths so Cowork points at the right files on Linux.
+Claude Cowork is a special Claude Desktop build that works inside a folder you point it at—it reads, writes, and organizes files there while it runs a plan. Cowork is currently a **macOS-only preview** backed by a sandboxed Linux VM; this repo reverse-engineers and stubs the macOS-native pieces so Cowork can run directly on Linux (x86_64)—no VM and no macOS required. The stub translates VM paths to host paths so Cowork points at the right files on Linux.
 
 **How it works:**
 
@@ -110,7 +110,7 @@ CLAUDE_DMG=~/Downloads/Claude-1.1.4010.dmg ./install.sh
 │  └── Platform helpers → Minimal compatibility shims             │
 ├─────────────────────────────────────────────────────────────────┤
 │  Claude Code Binary                                             │
-│  └── ~/.config/Claude/claude-code-vm/2.1.5/claude (ELF x86_64)  │
+│  └── ~/.config/Claude/claude-code-vm/{version}/claude (ELF x86_64) │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -193,7 +193,7 @@ On macOS, Cowork runs a Linux VM. On Linux, we skip the VM entirely and run the 
 
 The binary is a Bun-compiled executable at:
 ```
-~/.config/Claude/claude-code-vm/2.1.5/claude
+~/.config/Claude/claude-code-vm/{version}/claude
 ```
 
 </details>
@@ -215,11 +215,8 @@ claude-cowork-linux/
 │   └── sdk_bridge.js                   # SDK bridge (spawn dead code, kept for session state)
 ├── docs/
 │   ├── extensions.md                   # MCP and Chrome Extension integration overview
-│   ├── extensions-connectors-fix.md    # Fix for greyed-out connectors ($n variable patch)
-│   ├── fix-origin-validation.md        # IPC origin validation errors on Linux
 │   ├── known-issues.md                 # Safe Storage encryption, keyring setup
-│   ├── safestorage-tokens.md           # How to persist tokens across restarts
-│   └── security-review-installer.md   # Security audit of install.sh
+│   └── safestorage-tokens.md           # How to persist tokens across restarts
 ├── config/
 │   └── hyprland/claude.conf            # Optional: Hyprland window rules
 ├── patches/
@@ -239,9 +236,6 @@ claude-cowork-linux/
 
 After running `install.sh`, the `linux-app-extracted/` directory will contain the extracted Claude Desktop.
 
-> [!NOTE]
-> The installer automatically detects and extracts both `app.asar` (newer versions) and unpacked `app/` directories (older versions) from the DMG.
-
 ---
 
 ## ![](.github/assets/icons/console-24x24.png) Manual Setup
@@ -249,7 +243,9 @@ After running `install.sh`, the `linux-app-extracted/` directory will contain th
 If the automated installer doesn't work, follow these steps:
 
 <details>
-<summary><strong>1. Extract Claude Desktop from DMG</strong></summary>
+<parameter name="summary"><strong>1. Extract Claude Desktop from DMG</strong></summary>
+
+The installer handles `app.asar` extraction automatically. For manual extraction or older unpacked versions:
 
 ```bash
 # Extract DMG with 7z
@@ -366,7 +362,7 @@ cat ~/.local/share/claude-cowork/logs/claude-swift-trace.log
 Check that:
 
 1. The swift stub is properly loaded (check for `[claude-swift-stub] LOADING MODULE` in logs)
-2. The Claude binary exists at `~/.config/Claude/claude-code-vm/2.1.5/claude`
+2. The Claude binary exists at `~/.config/Claude/claude-code-vm/{version}/claude`
 3. You have Cowork enabled on your account (Max subscription)
 
 </details>
