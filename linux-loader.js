@@ -448,83 +448,105 @@ app.whenReady().then(() => {
 const { ipcMain, dialog, BrowserWindow } = electron;
 
 // Log ALL IPC handle registrations to find cowork-related ones
-const origHandle = ipcMain.handle.bind(ipcMain);
-ipcMain.handle = function(channel, handler) {
-  // Log VM and cowork related channels
-  if (channel.includes('VM') || channel.includes('vm') || channel.includes('cowork') || channel.includes('spawn') || channel.includes('Cowork')) {
-    console.log('[IPC] Handler registered:', channel);
-  }
-  return origHandle(channel, handler);
-};
-
-// Log all IPC on registrations
-const origOn = ipcMain.on.bind(ipcMain);
-ipcMain.on = function(channel, handler) {
-  if (channel.includes('VM') || channel.includes('vm') || channel.includes('cowork') || channel.includes('spawn') || channel.includes('Cowork')) {
-    console.log('[IPC] Listener registered:', channel);
-  }
-  return origOn(channel, handler);
-};
-
 // ============================================================
 // 5. IPC HANDLERS FOR COWORK/YUKONSILVER
 // ============================================================
 
 // The app uses eipc pattern: $eipc_message$_<UUID>_$_<namespace>_$_<handler>
-// We see multiple UUIDs in the wild: main-process and main-view.
-// If we only register one, the other path errors with "No handler registered".
-const EIPC_UUIDS = [
-  'c42e5915-d1f8-48a1-a373-fe793971fdbd', // main-process
-  '5fdd886a-1e8d-42a1-8970-2f5b612dd244', // main-view
-];
+// UUIDs change with each asar build. We intercept ipcMain.handle to auto-detect
+// any UUID the asar uses and register our handlers for it, while blocking the
+// asar from registering its own handlers for names we own.
 const EIPC_NAMESPACES = ['claude.web', 'claude.hybrid', 'claude.settings'];
+const EIPC_UUID_RE = /^\$eipc_message\$_([0-9a-f-]{36})_\$_[^_$]+_\$_(.+)$/;
 
-// Track registered handlers to avoid duplicates
-const registeredHandlers = new Set();
+// Map of handlerName -> { handler, isSync } for all our owned handlers
+const ownedHandlers = new Map();
+// Set of fully-qualified channels we've registered
+const registeredChannels = new Set();
+// UUIDs we've seen from the asar
+const knownUUIDs = new Set();
+
+function _registerChannelHandler(channel, handlerName, isSync) {
+  if (registeredChannels.has(channel)) return;
+  const { handler } = ownedHandlers.get(handlerName);
+  try {
+    if (isSync) {
+      origOn(channel, (event, ...args) => {
+        try {
+          event.returnValue = handler(event, ...args);
+        } catch (e) {
+          console.error(`[IPC] Sync handler error ${handlerName}:`, e.message);
+          event.returnValue = { result: null, error: e.message };
+        }
+      });
+    } else {
+      origHandle(channel, async (event, ...args) => {
+        try {
+          return await handler(event, ...args);
+        } catch (e) {
+          console.error(`[IPC] Handler error ${handlerName}:`, e.message);
+          throw e;
+        }
+      });
+    }
+    registeredChannels.add(channel);
+  } catch (e) {
+    if (!e.message.includes('already registered')) {
+      console.error(`[IPC] Failed to register ${handlerName}:`, e.message);
+    }
+  }
+}
+
+function _registerHandlerForUUID(uuid, handlerName) {
+  const { isSync } = ownedHandlers.get(handlerName);
+  for (const ns of EIPC_NAMESPACES) {
+    _registerChannelHandler(`$eipc_message$_${uuid}_$_${ns}_$_${handlerName}`, handlerName, isSync);
+  }
+}
 
 /**
- * Register an eipc-style handler for all namespaces
- * @param {string} handlerName - e.g., 'AppFeatures_$_getCoworkFeatureState'
- * @param {function} handler - The handler function
- * @param {boolean} isSync - Whether to use ipcMain.on (sync) vs ipcMain.handle (async)
+ * Register an eipc-style handler for all known UUIDs and namespaces.
+ * Also blocks the asar from registering its own handler for this name.
  */
 function registerEipcHandler(handlerName, handler, isSync = false) {
-  for (const uuid of EIPC_UUIDS) {
-    for (const ns of EIPC_NAMESPACES) {
-      const channel = `$eipc_message$_${uuid}_$_${ns}_$_${handlerName}`;
-      if (registeredHandlers.has(channel)) continue;
-
-      try {
-        if (isSync) {
-          ipcMain.on(channel, (event, ...args) => {
-            try {
-              event.returnValue = handler(event, ...args);
-            } catch (e) {
-              console.error(`[IPC] Sync handler error ${handlerName}:`, e.message);
-              event.returnValue = { result: null, error: e.message };
-            }
-          });
-        } else {
-          // Wrap async handlers with error boundary
-          ipcMain.handle(channel, async (event, ...args) => {
-            try {
-              return await handler(event, ...args);
-            } catch (e) {
-              console.error(`[IPC] Handler error ${handlerName}:`, e.message);
-              throw e; // Electron propagates this as a rejected invoke() in the renderer
-            }
-          });
-        }
-        registeredHandlers.add(channel);
-      } catch (e) {
-        if (!e.message.includes('already registered')) {
-          console.error(`[IPC] Failed to register ${handlerName}:`, e.message);
-        }
-      }
-    }
+  ownedHandlers.set(handlerName, { handler, isSync });
+  for (const uuid of knownUUIDs) {
+    _registerHandlerForUUID(uuid, handlerName);
   }
   console.log(`[IPC] Registered: ${handlerName} (${isSync ? 'sync' : 'async'})`);
 }
+
+const origHandle = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = function(channel, handler) {
+  const m = channel.match(EIPC_UUID_RE);
+  if (m) {
+    const [, uuid, handlerName] = m;
+    // Auto-register all our handlers for newly seen UUIDs
+    if (!knownUUIDs.has(uuid)) {
+      knownUUIDs.add(uuid);
+      console.log(`[IPC] Discovered new eipc UUID: ${uuid}`);
+      for (const name of ownedHandlers.keys()) {
+        _registerHandlerForUUID(uuid, name);
+      }
+    }
+    // Block asar from registering handlers for names we own
+    if (ownedHandlers.has(handlerName)) {
+      return;
+    }
+  }
+  if (channel.includes('VM') || channel.includes('Cowork')) {
+    console.log('[IPC] Handler registered:', channel);
+  }
+  return origHandle(channel, handler);
+};
+
+const origOn = ipcMain.on.bind(ipcMain);
+ipcMain.on = function(channel, handler) {
+  if (channel.includes('VM') || channel.includes('Cowork')) {
+    console.log('[IPC] Listener registered:', channel);
+  }
+  return origOn(channel, handler);
+};
 
 // ===== AppFeatures - CRITICAL for Cowork UI visibility =====
 registerEipcHandler('AppFeatures_$_getSupportedFeatures', async () => ({
@@ -838,6 +860,9 @@ registerEipcHandler('ClaudeCode_$_getStatus', async () => ({
   running: true,
   connected: true,
 }));
+
+// CustomPlugins platform check throws "Unsupported platform: linux-x64" without this
+registerEipcHandler('CustomPlugins_$_listMarketplaces', async () => []);
 
 // ===== BrowserNavigation - Navigation state =====
 registerEipcHandler('BrowserNavigation_$_navigationState_$store$_getState', async () => ({

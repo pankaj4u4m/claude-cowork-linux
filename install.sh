@@ -351,6 +351,12 @@ extract_dmg() {
         cp -r "$item" "$target_dir/resources/$name" 2>/dev/null || true
     done
 
+    # The app expects i18n JSON files at resources/i18n/*.json (not resources/*.json)
+    if ls "$target_dir/resources"/*.json >/dev/null 2>&1; then
+        mkdir -p "$target_dir/resources/i18n"
+        mv "$target_dir/resources"/*.json "$target_dir/resources/i18n/"
+    fi
+
     log_success "Extracted app to linux-app-extracted/"
 }
 
