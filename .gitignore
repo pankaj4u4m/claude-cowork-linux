@@ -56,7 +56,6 @@ analyze-logs.sh
 debug-launch.sh
 debug.sh
 test-loader.js
-ipc-handler-setup.js
 scripts/
 
 # Old loader variants

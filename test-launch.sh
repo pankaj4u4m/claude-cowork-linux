@@ -21,12 +21,19 @@ fi
 
 STUB_FILE="linux-app-extracted/node_modules/@ant/claude-swift/js/index.js"
 STUB_SRC_FILE="stubs/@ant/claude-swift/js/index.js"
+IPC_HANDLER_FILE="linux-app-extracted/ipc-handler-setup.js"
+IPC_HANDLER_SRC_FILE="ipc-handler-setup.js"
 
 # Ensure the extracted app tree has the latest stub baked in before packing.
 # This avoids relying on runtime module interception (ESM import() bypasses Module._load).
 if [ -f "$STUB_SRC_FILE" ]; then
   mkdir -p "$(dirname "$STUB_FILE")"
   cp -f "$STUB_SRC_FILE" "$STUB_FILE"
+fi
+
+# Copy IPC handler setup from tracked source
+if [ -f "$IPC_HANDLER_SRC_FILE" ]; then
+  cp -f "$IPC_HANDLER_SRC_FILE" "$IPC_HANDLER_FILE"
 fi
 
 # ============================================================
@@ -94,7 +101,7 @@ if best_png:
 fi
 
 # Only repack if stub is newer than asar (or asar doesn't exist)
-if [ ! -f "$ASAR_FILE" ] || [ "$STUB_FILE" -nt "$ASAR_FILE" ] || [ "linux-app-extracted/frame-fix-wrapper.js" -nt "$ASAR_FILE" ] || [ "linux-app-extracted/ipc-handler-setup.js" -nt "$ASAR_FILE" ]; then
+if [ ! -f "$ASAR_FILE" ] || [ "$STUB_FILE" -nt "$ASAR_FILE" ] || [ "linux-app-extracted/frame-fix-wrapper.js" -nt "$ASAR_FILE" ] || [ "$IPC_HANDLER_SRC_FILE" -nt "$ASAR_FILE" ]; then
   echo "Repacking app.asar (stub changed)..."
   asar pack linux-app-extracted "$ASAR_FILE"
 else
