@@ -60,39 +60,6 @@ if [ -f "$INDEX_JS" ] && grep -q 'titleBarOverlay' "$INDEX_JS"; then
   sed -i 's/titleBarStyle:"hiddenInset",autoHideMenuBar:!0,skipTaskbar:!0/autoHideMenuBar:!0/g' "$INDEX_JS"
 fi
 
-# Fix icon: extract PNG from macOS .icns for Linux desktop integration
-ICON_SRC="linux-app-extracted/resources/electron.icns"
-ICON_DST="$HOME/.local/share/icons/hicolor/256x256/apps/claude.png"
-if [ -f "$ICON_SRC" ] && [ ! -f "$ICON_DST" ] && python3 -c "from PIL import Image" 2>/dev/null; then
-  echo "Extracting app icon from .icns..."
-  python3 -c "
-import struct, io
-from PIL import Image
-
-with open('$ICON_SRC', 'rb') as f:
-    data = f.read()
-best_png, best_size = None, 0
-offset = 8
-while offset < len(data) - 8:
-    chunk_size = struct.unpack('>I', data[offset+4:offset+8])[0]
-    chunk_data = data[offset+8:offset+chunk_size]
-    if chunk_data[:8] == b'\x89PNG\r\n\x1a\n':
-        img = Image.open(io.BytesIO(chunk_data))
-        if img.size[0] > best_size:
-            best_size, best_png = img.size[0], chunk_data
-    offset += chunk_size
-
-if best_png:
-    img = Image.open(io.BytesIO(best_png))
-    import os
-    for size in [256, 128, 64, 48, 32]:
-        d = os.path.expanduser(f'~/.local/share/icons/hicolor/{size}x{size}/apps')
-        os.makedirs(d, exist_ok=True)
-        img.resize((size, size), Image.LANCZOS).save(f'{d}/claude.png')
-    print(f'Installed icon ({best_size}x{best_size})')
-" 2>/dev/null
-fi
-
 # Only repack if stub is newer than asar (or asar doesn't exist)
 if [ ! -f "$ASAR_FILE" ] || [ "$STUB_FILE" -nt "$ASAR_FILE" ] || [ "linux-app-extracted/frame-fix-wrapper.js" -nt "$ASAR_FILE" ]; then
   echo "Repacking app.asar (stub changed)..."

@@ -444,7 +444,11 @@ case "\${1:-}" in
     --devtools) shift; exec ./test-launch-devtools.sh "\$@" 2>&1 | tee -a "\$LOG_DIR/startup.log" ;;
     --debug)    shift; export CLAUDE_TRACE=1; exec ./test-launch.sh "\$@" 2>&1 | tee -a "\$LOG_DIR/startup.log" ;;
     --doctor)   exec ./install.sh --doctor ;;
-    *)          exec ./test-launch.sh "\$@" 2>&1 | tee -a "\$LOG_DIR/startup.log" ;;
+    *)
+        nohup bash -c 'cd "$1" && shift && exec ./test-launch.sh "$@"' \
+            -- "\$COWORK_DIR" "\$@" >> "\$LOG_DIR/startup.log" 2>&1 &
+        disown
+        ;;
 esac
 EOF
 
@@ -498,7 +502,7 @@ Type=Application
 Name=Claude
 Comment=AI assistant by Anthropic
 Exec=$HOME/.local/bin/claude-desktop %U
-Icon=$INSTALL_DIR/linux-app-extracted/resources/icon.icns
+Icon=claude
 Terminal=false
 Categories=Utility;Development;Chat;
 Keywords=AI;assistant;chat;anthropic;
@@ -512,6 +516,49 @@ EOF
     fi
 
     log_success "Environment configured"
+}
+
+# ============================================================
+# Step 9: Icon extraction (hicolor PNG from embedded .icns blobs)
+# ============================================================
+
+setup_icon() {
+    local icns="$INSTALL_DIR/linux-app-extracted/resources/electron.icns"
+    if [[ ! -f "$icns" ]]; then
+        log_warn "electron.icns not found — skipping icon installation"
+        return 0
+    fi
+
+    python3 - "$icns" << 'PYEOF' && log_success "App icon installed to hicolor theme" || log_warn "Icon extraction failed (non-fatal)"
+import struct, os, sys
+icns_path = sys.argv[1]
+with open(icns_path, 'rb') as f:
+    data = f.read()
+size_map = {b'ic07': 128, b'ic08': 256, b'ic09': 512, b'ic10': 1024}
+installed = []
+offset = 8
+while offset < len(data) - 8:
+    chunk_type = data[offset:offset+4]
+    chunk_size = struct.unpack('>I', data[offset+4:offset+8])[0]
+    if chunk_size < 8:
+        break
+    chunk_data = data[offset+8:offset+chunk_size]
+    px = size_map.get(chunk_type)
+    if px and chunk_data[:8] == b'\x89PNG\r\n\x1a\n':
+        d = os.path.expanduser(f'~/.local/share/icons/hicolor/{px}x{px}/apps')
+        os.makedirs(d, exist_ok=True)
+        with open(f'{d}/claude.png', 'wb') as out:
+            out.write(chunk_data)
+        installed.append(px)
+    offset += chunk_size
+if not installed:
+    raise SystemExit('No PNG chunks found in .icns')
+print(f"Installed sizes: {sorted(installed)}")
+PYEOF
+
+    if command_exists gtk-update-icon-cache; then
+        gtk-update-icon-cache --force "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+    fi
 }
 
 # ============================================================
@@ -716,7 +763,11 @@ main() {
     setup_environment
     echo ""
 
-    # Step 9: Preflight validation
+    # Step 9: Icon extraction
+    setup_icon
+    echo ""
+
+    # Step 10: Preflight validation
     log_info "Running post-install checks..."
     doctor || true
     echo ""
@@ -735,7 +786,7 @@ main() {
     echo "  claude-desktop --doctor     Run preflight diagnostics"
     echo ""
     echo "Update:"
-    echo "  cd $INSTALL_DIR && git pull"
+    echo "  bash $INSTALL_DIR/update.sh"
     echo ""
     echo "Installed: $INSTALL_DIR"
     echo "Logs:      ~/.local/share/claude-cowork/logs/startup.log"
