@@ -227,6 +227,7 @@ claude-desktop --doctor
 ## Contributors
 
 - **[@alpham8](https://github.com/alpham8)** &mdash; openSUSE package name fixes, binary resolution paths for Linuxbrew/mise/asdf, Swift stub method stubs ([PR&nbsp;#32](https://github.com/johnzfitch/claude-cowork-linux/pull/32), [#36](https://github.com/johnzfitch/claude-cowork-linux/pull/36))
+- **[@matiasandina](https://github.com/matiasandina)** &mdash; icon fix and terminal detach proposals that shipped in this release ([#37](https://github.com/johnzfitch/claude-cowork-linux/issues/37))
 
 ---
 

@@ -535,6 +535,7 @@ Reverse engineered and implemented by examining the Claude Desktop Electron app 
 - [@Boermt-die-Buse](https://github.com/Boermt-die-Buse) -- Linux UI fixes: native window frames, titlebar patch, icon extraction
 - [@JaPossert](https://github.com/JaPossert) -- Resources copy fix, Wayland global shortcuts report
 - [@alpham8](https://github.com/alpham8) -- openSUSE compatibility fixes, binary resolution paths, Swift stub method stubs
+- [@matiasandina](https://github.com/matiasandina) -- icon fix and terminal detach proposals (issue #37)
 
 ---
 
