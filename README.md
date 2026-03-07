@@ -119,10 +119,10 @@ CLAUDE_DMG=~/Downloads/Claude-1.1.4010.dmg ./install.sh
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Claude Desktop (Electron)                   │
 ├─────────────────────────────────────────────────────────────────┤
-│  Main Process (index.js)                                        │
-│  ├── Platform headers: darwin/14.0 (spoofed)                    │
-│  ├── Platform gate: patched for Linux support                   │
-│  └── LocalAgentModeSessionManager                               │
+│  ipc-handler-setup.js (baked into app.asar)                     │
+│  ├── EIPC handler registration (all namespaces)                 │
+│  ├── Session lifecycle & sessions.json persistence              │
+│  └── Transcript migration & directory setup                     │
 ├─────────────────────────────────────────────────────────────────┤
 │  @ant/claude-swift (STUBBED)                                    │
 │  ├── vm.setEventCallbacks() → Register process event handlers   │
@@ -136,7 +136,7 @@ CLAUDE_DMG=~/Downloads/Claude-1.1.4010.dmg ./install.sh
 │  └── Platform helpers → Minimal compatibility shims             │
 ├─────────────────────────────────────────────────────────────────┤
 │  Claude Code Binary                                             │
-│  └── ~/.local/bin/claude or ~/.config/Claude/claude-code-vm/*/claude │
+│  └── Resolved from ~/.local/bin, mise/asdf shims, PATH, etc.   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -213,14 +213,24 @@ The app also expects `@ant/claude-native` (a macOS-specific native module). Our 
 </details>
 
 <details>
-<summary><strong>5. Direct Execution</strong></summary>
+<summary><strong>5. IPC Handler Setup</strong></summary>
+
+All EIPC handlers (session lifecycle, transcript management, feature flags) are registered by `ipc-handler-setup.js`, which is baked directly into `app.asar`. `launch.sh` repacks the asar automatically whenever stubs or frame-fix files change — no manual step required.
+
+> [!NOTE]
+> Prior to v3.0.3, a separate `linux-loader.js` ran alongside the asar-baked handler via `--require`. It has been removed — `ipc-handler-setup.js` is now the sole IPC implementation.
+
+</details>
+
+<details>
+<summary><strong>6. Direct Execution</strong></summary>
 
 On macOS, Cowork runs a Linux VM. On Linux, we skip the VM entirely and run the Claude Code binary directly on the host. This is actually simpler and faster!
 
 The stub resolves the binary in priority order:
 ```
-~/.config/Claude/claude-code-vm/{version}/claude    (downloaded by Desktop)
 $CLAUDE_CODE_PATH                                    (explicit override)
+~/.config/Claude/claude-code-vm/{version}/claude    (downloaded by Desktop)
 ~/.local/bin/claude                                  (npm/bun global)
 ~/.npm-global/bin/claude
 /usr/local/bin/claude
@@ -248,6 +258,9 @@ claude-cowork-linux/
 ├── cowork/
 │   ├── event_dispatch.js               # EIPC event dispatch for LocalAgentModeSessions
 │   └── sdk_bridge.js                   # SDK bridge (spawn dead code, kept for session state)
+├── tests/
+│   ├── test-install-paths.sh           # 8-stage install validation (static analysis → Docker)
+│   └── Dockerfile.test                 # Arch Linux container for full install testing
 ├── docs/
 │   ├── extensions.md                   # MCP and Chrome Extension integration overview
 │   ├── known-issues.md                 # Safe Storage encryption, keyring setup
@@ -258,7 +271,7 @@ claude-cowork-linux/
 ├── enable-cowork.py                    # Patches platform gate to return {status:"supported"}
 ├── fetch-dmg.py                        # Auto-download Claude DMG via rnet (Cloudflare bypass)
 ├── install.sh                          # Installer + --doctor preflight diagnostics
-├── launch.sh                           # Launcher: repacks asar, detects password store, runs electron
+├── launch.sh                           # Launcher: syncs stubs, repacks asar, runs electron
 ├── launch-devtools.sh                  # Launcher with --inspect (Node.js DevTools)
 ├── validate.sh                         # Env var checks, stub URL validation, log scanning
 ├── PKGBUILD                            # Arch Linux AUR package definition
