@@ -64,7 +64,3 @@ Changes to these files require extra care and a note in your PR explaining the s
 
 If your change affects credential handling, verify it against [OAUTH-COMPLIANCE.md](OAUTH-COMPLIANCE.md).
 
-## Contributors
-
-- [@alpham8](https://github.com/alpham8) — openSUSE fixes, binary resolution paths
-- [@matiasandina](https://github.com/matiasandina) — icon fix and terminal detach proposals
