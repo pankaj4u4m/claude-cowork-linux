@@ -159,6 +159,12 @@ function translateVmPathStrict(vmPath) {
 // ancestor, canonicalizes that, then reattaches the remaining segments.
 // Never accepts raw /sessions/... paths — caller must translate first.
 function canonicalizeHostPath(hostPath) {
+  if (typeof hostPath !== 'string') {
+    return hostPath;
+  }
+  if (hostPath.startsWith('/sessions/')) {
+    throw new Error('canonicalizeHostPath called with raw VM path: ' + hostPath);
+  }
   if (!path.isAbsolute(hostPath)) {
     return hostPath;
   }
@@ -531,6 +537,16 @@ function canonicalizeResolvableHostPath(hostPath) {
   }
 }
 
+// Route VM paths through strict validation+canonicalization, host paths
+// through canonicalizeHostPath. Used by files.* and other surfaces that
+// receive paths from the asar without knowing the path type.
+function canonicalizePathForHostAccess(inputPath) {
+  if (typeof inputPath === 'string' && inputPath.startsWith('/sessions/')) {
+    return canonicalizeVmPathStrict(inputPath);
+  }
+  return canonicalizeHostPath(inputPath);
+}
+
 class SwiftAddonStub extends EventEmitter {
   constructor() {
     super();
@@ -757,13 +773,15 @@ class SwiftAddonStub extends EventEmitter {
       console.log('[claude-swift] setThemeMode(' + mode + ')');
     };
 
-    // File system operations — canonicalize paths to resolve mount symlinks
+    // File system operations — canonicalize paths to resolve mount symlinks.
+    // Uses canonicalizePathForHostAccess so both /sessions/... VM paths and
+    // regular host paths are handled correctly.
     this.files = {
       // Read file contents
       read: (filePath) => {
         console.log('[claude-swift] files.read()', filePath);
         try {
-          const content = fs.readFileSync(canonicalizeHostPath(filePath), 'utf-8');
+          const content = fs.readFileSync(canonicalizePathForHostAccess(filePath), 'utf-8');
           return Promise.resolve(content);
         } catch (e) {
           return Promise.reject(e);
@@ -773,7 +791,7 @@ class SwiftAddonStub extends EventEmitter {
       write: (filePath, content) => {
         console.log('[claude-swift] files.write()', filePath);
         try {
-          fs.writeFileSync(canonicalizeHostPath(filePath), content, 'utf-8');
+          fs.writeFileSync(canonicalizePathForHostAccess(filePath), content, 'utf-8');
           return Promise.resolve(true);
         } catch (e) {
           return Promise.reject(e);
@@ -781,13 +799,13 @@ class SwiftAddonStub extends EventEmitter {
       },
       // Check if file exists
       exists: (filePath) => {
-        return Promise.resolve(fs.existsSync(canonicalizeHostPath(filePath)));
+        return Promise.resolve(fs.existsSync(canonicalizePathForHostAccess(filePath)));
       },
       // Get file stats
       stat: (filePath) => {
         console.log('[claude-swift] files.stat()', filePath);
         try {
-          const stats = fs.statSync(canonicalizeHostPath(filePath));
+          const stats = fs.statSync(canonicalizePathForHostAccess(filePath));
           return Promise.resolve({
             size: stats.size,
             isFile: stats.isFile(),
@@ -804,13 +822,14 @@ class SwiftAddonStub extends EventEmitter {
       list: (dirPath) => {
         console.log('[claude-swift] files.list()', dirPath);
         try {
-          const resolved = canonicalizeHostPath(dirPath);
+          const resolved = canonicalizePathForHostAccess(dirPath);
+          const returnedBasePath = (typeof dirPath === 'string' && dirPath.length > 0) ? dirPath : resolved;
           const entries = fs.readdirSync(resolved, { withFileTypes: true });
           return Promise.resolve(entries.map(e => ({
             name: e.name,
             isFile: e.isFile(),
             isDirectory: e.isDirectory(),
-            path: path.join(resolved, e.name)
+            path: path.join(returnedBasePath, e.name)
           })));
         } catch (e) {
           return Promise.reject(e);
@@ -820,7 +839,7 @@ class SwiftAddonStub extends EventEmitter {
       watch: (filePath, callback) => {
         console.log('[claude-swift] files.watch()', filePath);
         try {
-          const watcher = fs.watch(canonicalizeHostPath(filePath), (eventType, filename) => {
+          const watcher = fs.watch(canonicalizePathForHostAccess(filePath), (eventType, filename) => {
             callback({ type: eventType, filename });
           });
           return { close: () => watcher.close() };
@@ -956,18 +975,16 @@ class SwiftAddonStub extends EventEmitter {
           return { success: false, error: err.message };
         }
         if (additionalMounts) {
-          if (!sessionName) {
-            const msg = 'Missing validated session path for mount creation';
-            trace('SECURITY: ' + msg);
-            if (self._onError) self._onError(id, msg, '');
-            return { success: false, error: msg };
-          }
-          trace('Creating mount symlinks for session: ' + sessionName);
-          if (!createMountSymlinks(sessionName, additionalMounts)) {
-            const msg = 'Failed to create mount symlinks for session: ' + sessionName;
-            trace('ERROR: ' + msg);
-            if (self._onError) self._onError(id, msg, '');
-            return { success: false, error: msg };
+          if (sessionName) {
+            trace('Creating mount symlinks for session: ' + sessionName);
+            if (!createMountSymlinks(sessionName, additionalMounts)) {
+              const msg = 'Failed to create mount symlinks for session: ' + sessionName;
+              trace('ERROR: ' + msg);
+              if (self._onError) self._onError(id, msg, '');
+              return { success: false, error: msg };
+            }
+          } else {
+            trace('WARNING: additionalMounts provided but no session VM path found; skipping mount creation');
           }
         } else {
           trace('Skipping mount symlink creation: no additionalMounts provided');
@@ -1035,7 +1052,8 @@ class SwiftAddonStub extends EventEmitter {
               const translated = canonicalizeVmPathStrict(arg);
               trace('Translated arg: ' + arg + ' -> ' + translated);
               return translated;
-            } catch (_) {
+            } catch (err) {
+              trace('WARNING: Failed to translate VM arg path "' + arg + '": ' + err.message);
               return arg; // Return original (will fail gracefully)
             }
           }
@@ -1070,7 +1088,9 @@ class SwiftAddonStub extends EventEmitter {
           try {
             hostCwdPath = canonicalizeVmPathStrict(sharedCwdPath);
             trace('Translated sharedCwdPath: ' + sharedCwdPath + ' -> ' + hostCwdPath);
-          } catch (_) {}
+          } catch (err) {
+            trace('WARNING: Failed to translate sharedCwdPath "' + sharedCwdPath + '": ' + err.message);
+          }
         }
         trace('vm.spawn() sharedCwdPath=' + sharedCwdPath + ' hostCwdPath=' + hostCwdPath);
 
@@ -1334,7 +1354,13 @@ class SwiftAddonStub extends EventEmitter {
               const translated = translateVmPathStrict(val);
               trace('Translated envVar ' + key + ': ' + val + ' -> ' + translated);
               envVars[key] = translated;
-            } catch (_) {}
+            } catch (err) {
+              trace('WARNING: Failed to translate envVar ' + key + '="' + val + '": ' + err.message);
+              if (key === 'CLAUDE_CONFIG_DIR') {
+                if (this._onError) this._onError(id, 'CLAUDE_CONFIG_DIR translation failed: ' + err.message, err.stack || '');
+                return { success: false, error: 'CLAUDE_CONFIG_DIR translation failed' };
+              }
+            }
           }
         }
       }
@@ -1347,12 +1373,16 @@ class SwiftAddonStub extends EventEmitter {
       // internal OAuth code path. Injecting ANTHROPIC_AUTH_TOKEN bypasses
       // that path and causes a 401 ("OAuth authentication not supported").
       // See CLAUDE.md "Critical: Auth Flow" for full explanation.
-      // Strip cwd and env from options to prevent bypassing sanitized values.
-      // options.env must not override filterEnv() output.
-      // options.cwd must not override the canonicalized cwd.
-      const { cwd: _optCwd, env: _optEnv, ...safeOptions } = (options || {});
-      const cwd = canonicalizeHostPath(sharedCwdPath || _optCwd || process.cwd());
-      const proc = nodeSpawn(command, args || [], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], ...safeOptions });
+      // Strip cwd, env, and stdio from options to prevent bypassing sanitized values.
+      const { cwd: _optCwd, env: _optEnv, stdio: _optStdio, ...safeOptions } = (options || {});
+      if (_optEnv && typeof _optEnv === 'object') {
+        trace('WARNING: spawn() ignoring options.env override');
+      }
+      if (_optStdio !== undefined) {
+        trace('WARNING: spawn() ignoring options.stdio override');
+      }
+      const cwd = canonicalizePathForHostAccess(sharedCwdPath || _optCwd || process.cwd());
+      const proc = nodeSpawn(command, args || [], { ...safeOptions, cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
       this._processes.set(id, proc);
 
       const self = this;
@@ -1418,11 +1448,14 @@ class SwiftAddonStub extends EventEmitter {
     console.log('[claude-swift] spawnSync() cmd=' + command);
     try {
       const { cwd: optCwd, env: optEnv, ...safeOptions } = (options || {});
-      const cwd = canonicalizeHostPath(optCwd || process.cwd());
+      const cwd = canonicalizePathForHostAccess(optCwd || process.cwd());
       // Intentionally inherit process.env here. The asar does not pass its
       // filtered LocalAgentMode envVars through spawnSync(), so ignoring
       // options.env preserves the existing behavior while still blocking
       // callers from overriding the canonicalized cwd.
+      if (optEnv && typeof optEnv === 'object') {
+        trace('WARNING: spawnSync() ignoring options.env override');
+      }
       const result = nodeSpawnSync(command, args || [], { encoding: 'utf-8', cwd, ...safeOptions });
       return { stdout: result.stdout, stderr: result.stderr, status: result.status, signal: result.signal, error: result.error };
     } catch (err) {
