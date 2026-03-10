@@ -547,6 +547,124 @@ function canonicalizePathForHostAccess(inputPath) {
   return canonicalizeHostPath(inputPath);
 }
 
+// --- writeToProcess structured stdin rewriting ---
+// When the asar sends JSON-line data to a running CLI process via stdin,
+// path values may still contain raw /sessions/... VM paths. Instead of
+// blindly regex-replacing all occurrences (which mangles user prose),
+// parse each JSON line and rewrite only known path-bearing keys.
+
+// Rewrite a single string value that may be a VM path or --flag=/sessions/...
+function rewriteVmPathStringForStructuredInput(value) {
+  if (typeof value !== 'string' || !value.includes('/sessions/')) {
+    return value;
+  }
+  try {
+    if (value.startsWith('/sessions/')) {
+      return canonicalizeVmPathStrict(value);
+    }
+    const flagValueMatch = value.match(/^([^=]+=)(\/sessions\/.*)$/);
+    if (flagValueMatch) {
+      return flagValueMatch[1] + canonicalizeVmPathStrict(flagValueMatch[2]);
+    }
+  } catch (_) {
+    return value;
+  }
+  return value;
+}
+
+// Keys whose string values are expected to contain filesystem paths.
+const STRUCTURED_VM_PATH_KEYS = new Set([
+  'args',
+  'cwd',
+  'path',
+  'filePath',
+  'workspacePath',
+  'rootPath',
+  'directory',
+  'dir',
+  'outputPath',
+  'sessionPath',
+]);
+
+// Recursively walk a parsed JSON value and rewrite VM paths in known keys.
+function rewriteStructuredVmPaths(value, key = null) {
+  if (Array.isArray(value)) {
+    if (key === 'args') {
+      let changed = false;
+      const rewritten = value.map((item) => {
+        const next = rewriteVmPathStringForStructuredInput(item);
+        changed = changed || next !== item;
+        return next;
+      });
+      return changed ? rewritten : value;
+    }
+    let changed = false;
+    const rewritten = value.map((item) => {
+      const next = rewriteStructuredVmPaths(item);
+      changed = changed || next !== item;
+      return next;
+    });
+    return changed ? rewritten : value;
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string' && STRUCTURED_VM_PATH_KEYS.has(key)) {
+      return rewriteVmPathStringForStructuredInput(value);
+    }
+    return value;
+  }
+  let changed = false;
+  const rewritten = {};
+  for (const [childKey, childValue] of Object.entries(value)) {
+    const next = rewriteStructuredVmPaths(childValue, childKey);
+    changed = changed || next !== childValue;
+    rewritten[childKey] = next;
+  }
+  return changed ? rewritten : value;
+}
+
+// Parse newline-delimited JSON from stdin data, rewrite VM paths in each
+// parsed object, and reassemble. Non-JSON lines fall through to a simple
+// regex replacement as a safety net.
+function rewriteStructuredStdinData(data) {
+  if (typeof data !== 'string' || !data.includes('/sessions/')) {
+    return data;
+  }
+  const segments = data.match(/[^\r\n]*\r?\n|[^\r\n]+/g);
+  if (!segments) {
+    return data;
+  }
+  let changed = false;
+  const rewritten = segments.map((segment) => {
+    const newlineMatch = segment.match(/(\r?\n)$/);
+    const suffix = newlineMatch ? newlineMatch[1] : '';
+    const line = suffix ? segment.slice(0, -suffix.length) : segment;
+    if (!line.trim()) {
+      return segment;
+    }
+    try {
+      const parsed = JSON.parse(line);
+      const result = rewriteStructuredVmPaths(parsed);
+      if (result !== parsed) {
+        changed = true;
+        trace('writeToProcess: rewrote VM paths in JSON stdin line');
+        return JSON.stringify(result) + suffix;
+      }
+    } catch (_) {
+      // Not valid JSON — fall back to regex for this line
+      if (line.includes('/sessions/')) {
+        const replaced = line.replace(/\/sessions\//g, SESSIONS_BASE + '/');
+        if (replaced !== line) {
+          changed = true;
+          trace('writeToProcess: regex-replaced /sessions/ in non-JSON stdin line');
+          return replaced + suffix;
+        }
+      }
+    }
+    return segment;
+  });
+  return changed ? rewritten.join('') : data;
+}
+
 class SwiftAddonStub extends EventEmitter {
   constructor() {
     super();
@@ -1514,15 +1632,11 @@ class SwiftAddonStub extends EventEmitter {
     console.log('[claude-swift] writeToProcess(' + id + ')');
     const proc = this._processes.get(id);
     if (proc && proc.stdin) {
-      // TODO: This blind regex replacement is fragile — it matches literal
-      // /sessions/ text in user prose and produces session-alias paths (not
-      // canonical host paths). The primary path leak is fixed at vm.spawn()
-      // args/cwd, so this is deferred to a follow-up hardening patch.
       let translatedData = data;
       if (typeof data === 'string' && data.includes('/sessions/')) {
-        translatedData = data.replace(/\/sessions\//g, SESSIONS_BASE + '/');
+        translatedData = rewriteStructuredStdinData(data);
         if (TRACE_IO) {
-          trace('writeToProcess: translated /sessions/ paths in stdin');
+          trace('writeToProcess: translated structured /sessions/ paths in stdin');
         }
       }
       proc.stdin.write(translatedData);
