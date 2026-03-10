@@ -140,6 +140,42 @@ function isPathSafe(basePath, targetPath) {
 // Sessions directory in user space (not /sessions)
 const SESSIONS_BASE = path.join(LOCAL_AGENT_ROOT, 'sessions');
 
+// SECURITY: Translate a VM-internal /sessions/... path to a validated host path
+// under SESSIONS_BASE. Rejects path traversal attempts. Throws on invalid input.
+function translateVmPathStrict(vmPath) {
+  if (typeof vmPath !== 'string' || !vmPath.startsWith('/sessions/')) {
+    throw new Error('Not a VM path: ' + vmPath);
+  }
+  const sessionPath = vmPath.substring('/sessions/'.length);
+  if (sessionPath.includes('..') || !isPathSafe(SESSIONS_BASE, sessionPath)) {
+    throw new Error('Path traversal blocked: ' + vmPath);
+  }
+  return path.join(SESSIONS_BASE, sessionPath);
+}
+
+// Resolve symlinks in a host path to its canonical form.
+// For nonexistent targets (write paths), walks up to the nearest existing
+// ancestor, canonicalizes that, then reattaches the remaining segments.
+// Never accepts raw /sessions/... paths — caller must translate first.
+function canonicalizeHostPath(hostPath) {
+  try {
+    return fs.realpathSync(hostPath);
+  } catch (_) {
+    const segments = [];
+    let current = path.dirname(hostPath);
+    segments.push(path.basename(hostPath));
+    while (current !== path.dirname(current)) {
+      try {
+        return path.join(fs.realpathSync(current), ...segments);
+      } catch (_) {
+        segments.unshift(path.basename(current));
+        current = path.dirname(current);
+      }
+    }
+    return hostPath;
+  }
+}
+
 function generateUUID() {
   if (typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -566,12 +602,18 @@ class SwiftAddonStub extends EventEmitter {
       // Open file with default application
       openFile: (filePath) => {
         console.log('[claude-swift] desktop.openFile()', filePath);
-        // Translate /sessions/... paths to host paths
         let hostPath = filePath;
         if (typeof filePath === 'string' && filePath.startsWith('/sessions/')) {
-          hostPath = path.join(SESSIONS_BASE, filePath.substring('/sessions/'.length));
-          console.log('[claude-swift] desktop.openFile() translated to:', hostPath);
+          try {
+            hostPath = canonicalizeHostPath(translateVmPathStrict(filePath));
+          } catch (e) {
+            console.error('[claude-swift] openFile path error:', e.message);
+            return Promise.resolve(false);
+          }
+        } else {
+          hostPath = canonicalizeHostPath(filePath);
         }
+        console.log('[claude-swift] desktop.openFile() resolved to:', hostPath);
         try {
           const { execFile } = require('child_process');
           execFile('xdg-open', [hostPath], (err) => {
@@ -585,12 +627,18 @@ class SwiftAddonStub extends EventEmitter {
       // Reveal file in file manager
       revealFile: (filePath) => {
         console.log('[claude-swift] desktop.revealFile()', filePath);
-        // Translate /sessions/... paths to host paths
         let hostPath = filePath;
         if (typeof filePath === 'string' && filePath.startsWith('/sessions/')) {
-          hostPath = path.join(SESSIONS_BASE, filePath.substring('/sessions/'.length));
-          console.log('[claude-swift] desktop.revealFile() translated to:', hostPath);
+          try {
+            hostPath = canonicalizeHostPath(translateVmPathStrict(filePath));
+          } catch (e) {
+            console.error('[claude-swift] revealFile path error:', e.message);
+            return Promise.resolve(false);
+          }
+        } else {
+          hostPath = canonicalizeHostPath(filePath);
         }
+        console.log('[claude-swift] desktop.revealFile() resolved to:', hostPath);
         try {
           const { execFile } = require('child_process');
           const dir = path.dirname(hostPath);
@@ -609,12 +657,18 @@ class SwiftAddonStub extends EventEmitter {
       // Preview file (Quick Look equivalent)
       previewFile: (filePath) => {
         console.log('[claude-swift] desktop.previewFile()', filePath);
-        // Translate /sessions/... paths to host paths
         let hostPath = filePath;
         if (typeof filePath === 'string' && filePath.startsWith('/sessions/')) {
-          hostPath = path.join(SESSIONS_BASE, filePath.substring('/sessions/'.length));
-          console.log('[claude-swift] desktop.previewFile() translated to:', hostPath);
+          try {
+            hostPath = canonicalizeHostPath(translateVmPathStrict(filePath));
+          } catch (e) {
+            console.error('[claude-swift] previewFile path error:', e.message);
+            return Promise.resolve(false);
+          }
+        } else {
+          hostPath = canonicalizeHostPath(filePath);
         }
+        console.log('[claude-swift] desktop.previewFile() resolved to:', hostPath);
         try {
           const { execFile } = require('child_process');
           // Try gnome-sushi (GNOME Quick Look), fall back to xdg-open
@@ -655,13 +709,13 @@ class SwiftAddonStub extends EventEmitter {
       console.log('[claude-swift] setThemeMode(' + mode + ')');
     };
 
-    // File system operations
+    // File system operations — canonicalize paths to resolve mount symlinks
     this.files = {
       // Read file contents
       read: (filePath) => {
         console.log('[claude-swift] files.read()', filePath);
         try {
-          const content = fs.readFileSync(filePath, 'utf-8');
+          const content = fs.readFileSync(canonicalizeHostPath(filePath), 'utf-8');
           return Promise.resolve(content);
         } catch (e) {
           return Promise.reject(e);
@@ -671,7 +725,7 @@ class SwiftAddonStub extends EventEmitter {
       write: (filePath, content) => {
         console.log('[claude-swift] files.write()', filePath);
         try {
-          fs.writeFileSync(filePath, content, 'utf-8');
+          fs.writeFileSync(canonicalizeHostPath(filePath), content, 'utf-8');
           return Promise.resolve(true);
         } catch (e) {
           return Promise.reject(e);
@@ -679,13 +733,13 @@ class SwiftAddonStub extends EventEmitter {
       },
       // Check if file exists
       exists: (filePath) => {
-        return Promise.resolve(fs.existsSync(filePath));
+        return Promise.resolve(fs.existsSync(canonicalizeHostPath(filePath)));
       },
       // Get file stats
       stat: (filePath) => {
         console.log('[claude-swift] files.stat()', filePath);
         try {
-          const stats = fs.statSync(filePath);
+          const stats = fs.statSync(canonicalizeHostPath(filePath));
           return Promise.resolve({
             size: stats.size,
             isFile: stats.isFile(),
@@ -702,12 +756,13 @@ class SwiftAddonStub extends EventEmitter {
       list: (dirPath) => {
         console.log('[claude-swift] files.list()', dirPath);
         try {
-          const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+          const resolved = canonicalizeHostPath(dirPath);
+          const entries = fs.readdirSync(resolved, { withFileTypes: true });
           return Promise.resolve(entries.map(e => ({
             name: e.name,
             isFile: e.isFile(),
             isDirectory: e.isDirectory(),
-            path: path.join(dirPath, e.name)
+            path: path.join(resolved, e.name)
           })));
         } catch (e) {
           return Promise.reject(e);
@@ -717,7 +772,7 @@ class SwiftAddonStub extends EventEmitter {
       watch: (filePath, callback) => {
         console.log('[claude-swift] files.watch()', filePath);
         try {
-          const watcher = fs.watch(filePath, (eventType, filename) => {
+          const watcher = fs.watch(canonicalizeHostPath(filePath), (eventType, filename) => {
             callback({ type: eventType, filename });
           });
           return { close: () => watcher.close() };
@@ -920,7 +975,7 @@ class SwiftAddonStub extends EventEmitter {
               return arg; // Return original (will fail gracefully)
             }
 
-            const translated = path.join(SESSIONS_BASE, sessionPath);
+            const translated = canonicalizeHostPath(path.join(SESSIONS_BASE, sessionPath));
             trace('Translated arg: ' + arg + ' -> ' + translated);
             return translated;
           }
@@ -954,7 +1009,7 @@ class SwiftAddonStub extends EventEmitter {
         if (typeof sharedCwdPath === 'string' && sharedCwdPath.startsWith('/sessions/')) {
           const sessionPath = sharedCwdPath.substring('/sessions/'.length);
           if (!sessionPath.includes('..') && isPathSafe(SESSIONS_BASE, sessionPath)) {
-            hostCwdPath = path.join(SESSIONS_BASE, sessionPath);
+            hostCwdPath = canonicalizeHostPath(path.join(SESSIONS_BASE, sessionPath));
             trace('Translated sharedCwdPath: ' + sharedCwdPath + ' -> ' + hostCwdPath);
           }
         }
@@ -1002,15 +1057,10 @@ class SwiftAddonStub extends EventEmitter {
       readFile: async (sessionName, vmPath) => {
         trace('vm.readFile() sessionName=' + sessionName + ' vmPath=' + vmPath);
 
-        // Translate VM path to host path
+        // Translate VM path to host path and resolve symlinks
         let hostPath = vmPath;
         if (typeof vmPath === 'string' && vmPath.startsWith('/sessions/')) {
-          const sessionPath = vmPath.substring('/sessions/'.length);
-          if (sessionPath.includes('..') || !isPathSafe(SESSIONS_BASE, sessionPath)) {
-            trace('SECURITY: Path traversal blocked in readFile: ' + vmPath);
-            throw new Error('Invalid path');
-          }
-          hostPath = path.join(SESSIONS_BASE, sessionPath);
+          hostPath = canonicalizeHostPath(translateVmPathStrict(vmPath));
         }
 
         trace('vm.readFile() translated to: ' + hostPath);
@@ -1033,15 +1083,10 @@ class SwiftAddonStub extends EventEmitter {
       writeFile: async (sessionName, vmPath, base64Content) => {
         trace('vm.writeFile() sessionName=' + sessionName + ' vmPath=' + vmPath);
 
-        // Translate VM path to host path
+        // Translate VM path to host path and resolve symlinks
         let hostPath = vmPath;
         if (typeof vmPath === 'string' && vmPath.startsWith('/sessions/')) {
-          const sessionPath = vmPath.substring('/sessions/'.length);
-          if (sessionPath.includes('..') || !isPathSafe(SESSIONS_BASE, sessionPath)) {
-            trace('SECURITY: Path traversal blocked in writeFile: ' + vmPath);
-            throw new Error('Invalid path');
-          }
-          hostPath = path.join(SESSIONS_BASE, sessionPath);
+          hostPath = canonicalizeHostPath(translateVmPathStrict(vmPath));
         }
 
         trace('vm.writeFile() translated to: ' + hostPath);
@@ -1133,17 +1178,9 @@ class SwiftAddonStub extends EventEmitter {
         trace('vm.mountPath() processId=' + processId + ' subpath=' + subpath + ' pathName=' + pathName + ' mode=' + mode);
         console.log('[claude-swift] vm.mountPath() processId=' + processId + ' subpath=' + subpath + ' mode=' + mode);
 
-        // Translate VM path to host path
+        // Translate VM path to host path and resolve symlinks
         if (typeof pathName === 'string' && pathName.startsWith('/sessions/')) {
-          const sessionPath = pathName.substring('/sessions/'.length);
-
-          // SECURITY: Validate no path traversal
-          if (sessionPath.includes('..') || !isPathSafe(SESSIONS_BASE, sessionPath)) {
-            trace('SECURITY: Path traversal blocked in mountPath: ' + pathName);
-            throw new Error('Invalid path');
-          }
-
-          const hostPath = path.join(SESSIONS_BASE, sessionPath);
+          const hostPath = canonicalizeHostPath(translateVmPathStrict(pathName));
           trace('vm.mountPath() translated to: ' + hostPath);
 
           // Ensure parent directory exists
@@ -1252,8 +1289,12 @@ class SwiftAddonStub extends EventEmitter {
       // internal OAuth code path. Injecting ANTHROPIC_AUTH_TOKEN bypasses
       // that path and causes a 401 ("OAuth authentication not supported").
       // See CLAUDE.md "Critical: Auth Flow" for full explanation.
-      const cwd = sharedCwdPath || (options && options.cwd) || process.cwd();
-      const proc = nodeSpawn(command, args || [], Object.assign({ cwd: cwd, env: env, stdio: ['pipe', 'pipe', 'pipe'] }, options || {}));
+      // Strip cwd and env from options to prevent bypassing sanitized values.
+      // options.env must not override filterEnv() output.
+      // options.cwd must not override the canonicalized cwd.
+      const { cwd: _optCwd, env: _optEnv, ...safeOptions } = (options || {});
+      const cwd = canonicalizeHostPath(sharedCwdPath || _optCwd || process.cwd());
+      const proc = nodeSpawn(command, args || [], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], ...safeOptions });
       this._processes.set(id, proc);
 
       const self = this;
@@ -1318,7 +1359,9 @@ class SwiftAddonStub extends EventEmitter {
   spawnSync(command, args, options) {
     console.log('[claude-swift] spawnSync() cmd=' + command);
     try {
-      const result = nodeSpawnSync(command, args || [], Object.assign({ encoding: 'utf-8' }, options || {}));
+      const { cwd: optCwd, env: optEnv, ...safeOptions } = (options || {});
+      const cwd = canonicalizeHostPath(optCwd || process.cwd());
+      const result = nodeSpawnSync(command, args || [], { encoding: 'utf-8', cwd, ...safeOptions });
       return { stdout: result.stdout, stderr: result.stderr, status: result.status, signal: result.signal, error: result.error };
     } catch (err) {
       console.error('[claude-swift] spawnSync error:', err);
@@ -1376,7 +1419,10 @@ class SwiftAddonStub extends EventEmitter {
     console.log('[claude-swift] writeToProcess(' + id + ')');
     const proc = this._processes.get(id);
     if (proc && proc.stdin) {
-      // Translate /sessions/... paths to host paths in stdin data
+      // TODO: This blind regex replacement is fragile — it matches literal
+      // /sessions/ text in user prose and produces session-alias paths (not
+      // canonical host paths). The primary path leak is fixed at vm.spawn()
+      // args/cwd, so this is deferred to a follow-up hardening patch.
       let translatedData = data;
       if (typeof data === 'string' && data.includes('/sessions/')) {
         translatedData = data.replace(/\/sessions\//g, SESSIONS_BASE + '/');

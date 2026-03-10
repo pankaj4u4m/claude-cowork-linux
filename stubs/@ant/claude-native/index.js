@@ -240,9 +240,11 @@ const nativeStub = {
   // File system integration
   revealInFinder: (filePath) => {
     trace('NATIVE', 'revealInFinder', { path: filePath });
-    // xdg-open on Linux
+    // xdg-open on Linux — resolve symlinks to canonical host path
     const { spawn } = require('child_process');
-    spawn('xdg-open', [path.dirname(filePath)], { detached: true, stdio: 'ignore' });
+    let resolved = filePath;
+    try { resolved = require('fs').realpathSync(filePath); } catch (_) {}
+    spawn('xdg-open', [path.dirname(resolved)], { detached: true, stdio: 'ignore' });
   },
 
   // Accessibility
