@@ -300,7 +300,15 @@ const nativeStub = {
         ? canonicalizeResolvableHostPath(filePath)
         : canonicalizeResolvableHostPath(path.dirname(filePath));
     } catch (_) {
-      revealDir = findNearestExistingAncestor(path.dirname(filePath));
+      // Only fall back to immediate parent, not arbitrary ancestors
+      const parentDir = path.dirname(filePath);
+      try {
+        fs.accessSync(parentDir, fs.constants.R_OK);
+        revealDir = parentDir;
+      } catch (_) {
+        console.error('[claude-native] revealInFinder: target and parent missing:', filePath);
+        return; // Don't open unrelated directories
+      }
     }
     spawn('xdg-open', [revealDir], { detached: true, stdio: 'ignore' });
   },
