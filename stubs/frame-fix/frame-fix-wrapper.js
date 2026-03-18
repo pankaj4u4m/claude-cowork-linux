@@ -158,7 +158,6 @@ function hideLinuxMenuBars(electronModule) {
         win.setMenuBarVisibility(false);
       }
     }
-    console.log('[Frame Fix] Menu bar hidden on all windows');
   } catch (error) {
     console.log('[Frame Fix] setMenuBarVisibility error:', error.message);
   }
@@ -223,52 +222,23 @@ function installLinuxMenuInterceptors(electronModule) {
 
   if (app && typeof app.setApplicationMenu !== 'function') {
     app.setApplicationMenu = function(menu) {
-      try {
-        if (originalSetAppMenu) {
-          return originalSetAppMenu(menu);
-        }
-      } catch (error) {
-        console.log('[Frame Fix] app.setApplicationMenu fallback error (ignored):', error.message);
-      } finally {
-        hideLinuxMenuBars(electronModule);
-      }
+      hideLinuxMenuBars(electronModule);
       return undefined;
     };
-    console.log('[Frame Fix] Added app.setApplicationMenu fallback');
   }
 
   menuApi.setApplicationMenu = function(menu) {
-    console.log('[Frame Fix] Intercepting setApplicationMenu');
-    try {
-      if (originalSetAppMenu) {
-        return originalSetAppMenu(menu);
-      }
-    } catch (error) {
-      console.log('[Frame Fix] setApplicationMenu error (ignored):', error.message);
-    } finally {
-      hideLinuxMenuBars(electronModule);
-    }
+    hideLinuxMenuBars(electronModule);
     return undefined;
   };
 
   if (originalSetDefaultAppMenu) {
     menuApi.setDefaultApplicationMenu = function(...args) {
-      console.log('[Frame Fix] Intercepting setDefaultApplicationMenu');
       if (REAL_PLATFORM === 'linux') {
-        try {
-          menuApi.setApplicationMenu(null);
-        } catch (error) {
-          console.log('[Frame Fix] setDefaultApplicationMenu fallback error (ignored):', error.message);
-        }
+        hideLinuxMenuBars(electronModule);
         return undefined;
       }
-
-      try {
-        return originalSetDefaultAppMenu(...args);
-      } catch (error) {
-        console.log('[Frame Fix] setDefaultApplicationMenu error (ignored):', error.message);
-        return undefined;
-      }
+      return originalSetDefaultAppMenu(...args);
     };
   }
 }
@@ -384,7 +354,7 @@ const originalRenameSync = fs.renameSync;
 fs.rename = function(oldPath, newPath, callback) {
   originalRename(oldPath, newPath, (err) => {
     if (err && err.code === 'EXDEV') {
-      console.log('[fs.rename] EXDEV detected, using copy+delete for:', oldPath);
+      // Cross-filesystem rename — fall back to copy+delete
       const readStream = fs.createReadStream(oldPath);
       const writeStream = fs.createWriteStream(newPath);
       readStream.on('error', callback);
@@ -404,7 +374,7 @@ fs.renameSync = function(oldPath, newPath) {
     return originalRenameSync(oldPath, newPath);
   } catch (err) {
     if (err.code === 'EXDEV') {
-      console.log('[fs.renameSync] EXDEV detected, using copy+delete for:', oldPath);
+      // Cross-filesystem rename — fall back to copy+delete
       fs.copyFileSync(oldPath, newPath);
       fs.unlinkSync(oldPath);
       return;
@@ -412,8 +382,6 @@ fs.renameSync = function(oldPath, newPath) {
     throw err;
   }
 };
-
-console.log('[fs.rename] Patched to handle EXDEV errors');
 
 // ============================================================
 // 1. PLATFORM SPOOFING - Immediate, before any app code
