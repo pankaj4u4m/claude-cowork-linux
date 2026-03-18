@@ -673,15 +673,11 @@ function createSessionStore(options) {
 }
 
 module.exports = {
-  SessionStore,
   createSessionStore,
   deriveMetadataPathFromConfigDir,
   findSessionMetadataPath,
-  getAuthorizedSessionRoots,
-  isLocalSessionMetadataFilePath,
   getPreferredSessionRoot,
+  isLocalSessionMetadataFilePath,
   getSessionDirectory,
-  isSyntheticSessionCwd,
-  listLocalSessionMetadataFiles,
   detectJsonIndentation,
 };

@@ -548,16 +548,10 @@ function createSessionsApi(options) {
 
 module.exports = {
   ANTHROPIC_BETA,
-  ANTHROPIC_VERSION,
   CURL_CONNECT_TIMEOUT_SECONDS,
   CURL_MAX_TIME_SECONDS,
-  DEFAULT_BASE_URL,
-  SessionsApi,
   buildAuthHeaders,
   buildCurlRequestArgs,
   createSessionsApi,
-  defaultRequestSync,
-  normalizeRemoteSessionRecord,
-  normalizeBaseUrl,
   readAuthTokenFromFileDescriptor,
 };
