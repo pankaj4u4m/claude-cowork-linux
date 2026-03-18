@@ -119,6 +119,7 @@ function defaultRequestSync(request) {
   // Curl output format: <body>\n<status_code>
   const stdout = execFileSync('curl', buildCurlRequestArgs(request), {
     encoding: 'utf8',
+    timeout: (CURL_MAX_TIME_SECONDS + 2) * 1000,
   });
   
   // Split response body and status code
@@ -319,7 +320,7 @@ class SessionsApi {
     } catch (error) {
       return {
         success: false,
-        error: error.message,
+        error: method + ' ' + pathname + ': ' + error.message,
       };
     }
 

@@ -1724,6 +1724,11 @@ class SwiftAddonStub extends EventEmitter {
       processState.hadFirstResponse ||
       signal
     ) {
+      trace('Flatline retry skipped for ' + processState.id + ': ' +
+        (!processState.attemptedResume ? 'not a resume' :
+         processState.retryCount > 0 ? 'already retried' :
+         processState.hadFirstResponse ? 'had response' :
+         'killed by signal ' + signal));
       return false;
     }
 
@@ -1826,9 +1831,10 @@ class SwiftAddonStub extends EventEmitter {
     }
     const proc = this._processes.get(id);
     if (proc && proc.stdin) {
-      // Raw passthrough - /sessions symlink now points to active SESSIONS_BASE,
-      // so paths resolve correctly without translation
+      trace('Sending ' + Buffer.byteLength(data) + ' bytes to stdin of process ' + id);
       proc.stdin.write(data);
+    } else {
+      trace('stdin write dropped for process ' + id + ': proc=' + !!proc + ' stdin=' + !!(proc && proc.stdin));
     }
   }
 

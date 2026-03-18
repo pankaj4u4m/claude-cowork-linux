@@ -255,9 +255,13 @@ function readSessionAuditInitEntries(sessionDirectory) {
     return [];
   }
 
-  return auditText
-    .split('\n')
-    .map((line) => parseAuditLine(line))
+  const lines = auditText.split('\n');
+  const parsed = lines.map((line) => parseAuditLine(line));
+  const parseFailures = parsed.filter((entry, i) => entry === null && lines[i].trim()).length;
+  if (parseFailures > 0) {
+    console.error('[session_store] ' + parseFailures + ' corrupt lines in ' + auditPath);
+  }
+  return parsed
     .filter((entry) => (
       entry &&
       entry.type === 'system' &&
