@@ -595,6 +595,10 @@ class SessionOrchestrator {
     }
 
     // Step 11: Check for resume arguments and session metadata
+    // Only strip --resume when we have positive evidence the transcript is
+    // unresumable (e.g. corrupt/empty file on disk). If no local transcript
+    // exists at all, trust the asar's --resume — the CLI may store session
+    // state server-side or in a location we don't scan.
     const resumeArgIndex = findResumeArgIndex(hostArgs);
     const currentResumeCliSessionId = resumeArgIndex === -1 ? null : hostArgs[resumeArgIndex + 1];
     const sessionDirectory = deriveSessionDirectory(hostConfigDir);
@@ -608,9 +612,9 @@ class SessionOrchestrator {
         sessionDirectory,
       });
 
-      if (!resumePlan.shouldResume) {
+      if (!resumePlan.shouldResume && resumePlan.reason === 'transcript_not_resumable') {
         hostArgs = removeResumeArgs(hostArgs, trace);
-      } else if (resumePlan.resumeCliSessionId) {
+      } else if (resumePlan.shouldResume && resumePlan.resumeCliSessionId) {
         hostArgs = replaceResumeArgs(hostArgs, resumePlan.resumeCliSessionId, trace);
       }
     }
