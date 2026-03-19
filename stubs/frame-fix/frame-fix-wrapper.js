@@ -15,7 +15,6 @@ const { createSessionOrchestrator } = require('./cowork/session_orchestrator.js'
 const { createSessionStore } = require('./cowork/session_store.js');
 const { createIpcTap } = require('./cowork/ipc_tap.js');
 const { createOverrideRegistry, matchOverride, extractEipcUuid, proactivelyRegisterOverrides, isProactiveChannel } = require('./cowork/ipc_overrides.js');
-const { createLocalSessionBridge } = require('./cowork/local_session_bridge.js');
 
 console.log('[Frame Fix] Wrapper v2.5 loaded');
 if (process.env.CLAUDE_DEVTOOLS === '1') console.log('[Frame Fix] DevTools mode enabled');
@@ -346,15 +345,9 @@ const ipcSessionOrchestrator = createSessionOrchestrator({
   dirs: DIRS,
   sessionStore: localSessionStore,
 });
-const localSessionBridge = createLocalSessionBridge({
-  claudeLocalAgentConfigRoot: DIRS.claudeLocalAgentRoot,
-  xdgDataHome: DIRS.xdgDataHome,
-  appSupportRoot: DIRS.legacyClaudeAppSupportRoot,
-});
 const asarAdapter = createAsarAdapter({
   sessionOrchestrator: ipcSessionOrchestrator,
   sessionStore: localSessionStore,
-  localSessionBridge,
 });
 global.__coworkAsarAdapter = asarAdapter;
 global.__coworkSessionStore = localSessionStore;
@@ -554,7 +547,12 @@ const SESSIONS_BASE = DIRS.claudeSessionsBase;
 
 console.log('[Cowork] Linux support enabled - VM will be emulated');
 
-const IGNORED_LIVE_MESSAGE_TYPES = new Set(['queue-operation', 'rate_limit_event']);
+const IGNORED_LIVE_MESSAGE_TYPES = new Set([
+  'queue-operation',
+  'progress',
+  'last-prompt',
+  'rate_limit_event',
+]);
 
 function parseRequestedProcessId(args) {
   for (const arg of args) {
@@ -831,16 +829,12 @@ Module.prototype.require = function(id) {
       _sendPatched.add(contents);
       const originalSend = contents.send.bind(contents);
       contents.send = function(channel, ...args) {
-        const normalized = localSessionBridge.normalizeLiveSessionPayloads(channel, args[0]);
-        if (normalized.length === 0) {
-          logIgnoredLiveMessage(channel, args[0], 'filtered');
+        const ignoredType = getIgnoredLiveMessageType(channel, args[0]);
+        if (ignoredType) {
+          logIgnoredLiveMessage(channel, args[0], ignoredType);
           return false;
         }
-        let result;
-        for (const payload of normalized) {
-          result = originalSend(channel, payload, ...args.slice(1));
-        }
-        return result;
+        return originalSend(channel, ...args);
       };
     }
 

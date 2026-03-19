@@ -198,6 +198,8 @@ test('override registry covers all known broken handlers', () => {
     'FileSystem_$_whichApplication',
     'FileSystem_$_showInFolder',
     'FileSystem_$_getSystemPath',
+    'MainWindowTitleBar_$_requestMainMenuPopup',
+    'BrowserNavigation_$_requestMainMenuPopup',
     'CoworkSpaces_$_getAllSpaces',
   ];
   for (const suffix of expectedSuffixes) {
@@ -287,6 +289,48 @@ test('matchOverride rejects $store$ channels that partially match override suffi
     registry
   );
   assert.ok(handler2, 'should match the actual method channel');
+});
+
+test('requestMainMenuPopup calls popup on stored global menu', async () => {
+  // Mock electron in require cache so the handler's require('electron') resolves
+  const Module = require('module');
+  const origResolve = Module._resolveFilename;
+  const mockKey = '__mock_electron_for_menu_test__';
+  Module._resolveFilename = function(request, ...args) {
+    if (request === 'electron') return mockKey;
+    return origResolve.call(this, request, ...args);
+  };
+  require.cache[mockKey] = {
+    id: mockKey, filename: mockKey, loaded: true,
+    exports: {
+      BrowserWindow: {
+        fromWebContents() { return null; },
+        getFocusedWindow() { return null; },
+      },
+    },
+  };
+
+  try {
+    const popupCalls = [];
+    global.__coworkApplicationMenu = {
+      popup(opts) { popupCalls.push(opts); },
+    };
+    const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+    const handler = matchOverride('claude.web_$_MainWindowTitleBar_$_requestMainMenuPopup', registry);
+    await handler({ sender: null });
+    assert.equal(popupCalls.length, 1);
+  } finally {
+    delete global.__coworkApplicationMenu;
+    delete require.cache[mockKey];
+    Module._resolveFilename = origResolve;
+  }
+});
+
+test('requestMainMenuPopup is a no-op when global menu is not set', async () => {
+  delete global.__coworkApplicationMenu;
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('claude.web_$_BrowserNavigation_$_requestMainMenuPopup', registry);
+  await assert.doesNotReject(async () => handler({ sender: null }));
 });
 
 test('override handlers return fresh objects for object results (not shared references)', async () => {

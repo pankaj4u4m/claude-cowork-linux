@@ -218,6 +218,58 @@ test('describeLinuxMenuApiShape treats function-valued Menu as present', () => {
   ]);
 });
 
+test('installLinuxMenuInterceptors stores menu in global.__coworkApplicationMenu', () => {
+  const app = new EventEmitter();
+  const fakeWindow = {
+    setMenuBarVisibility() {},
+  };
+  const electronModule = {
+    app,
+    BrowserWindow: {
+      getAllWindows() { return [fakeWindow]; },
+    },
+    Menu: {
+      setApplicationMenu() {},
+    },
+  };
+
+  const helpers = loadFrameFixHelpers();
+  helpers.installLinuxMenuInterceptors(electronModule);
+
+  const fakeMenu = { label: 'File', popup() {} };
+  electronModule.Menu.setApplicationMenu(fakeMenu);
+  assert.equal(helpers.global.__coworkApplicationMenu, fakeMenu);
+});
+
+test('IGNORED_LIVE_MESSAGE_TYPES includes progress and last-prompt alongside queue-operation', () => {
+  // Validate the set contents by parsing the source directly — these types
+  // are defined in the module scope and can't be extracted by loadFrameFixHelpers.
+  const wrapperPath = path.join(__dirname, '..', '..', '..', 'stubs', 'frame-fix', 'frame-fix-wrapper.js');
+  const source = fs.readFileSync(wrapperPath, 'utf8');
+
+  // Extract the IGNORED_LIVE_MESSAGE_TYPES set definition
+  const match = source.match(/const IGNORED_LIVE_MESSAGE_TYPES = new Set\(\[([\s\S]*?)\]\)/);
+  assert.ok(match, 'IGNORED_LIVE_MESSAGE_TYPES set not found in source');
+
+  const setContents = match[1];
+  const expectedTypes = ['queue-operation', 'progress', 'last-prompt', 'rate_limit_event'];
+  for (const type of expectedTypes) {
+    assert.ok(setContents.includes(`'${type}'`), `missing type: ${type}`);
+  }
+});
+
+test('getIgnoredLiveMessageType only filters onEvent channels', () => {
+  // Validate the channel guard by parsing the source — the function is in module scope.
+  const wrapperPath = path.join(__dirname, '..', '..', '..', 'stubs', 'frame-fix', 'frame-fix-wrapper.js');
+  const source = fs.readFileSync(wrapperPath, 'utf8');
+
+  // getIgnoredLiveMessageType must check for onEvent channels
+  const fnMatch = source.match(/function getIgnoredLiveMessageType\([\s\S]*?^}/m);
+  assert.ok(fnMatch, 'getIgnoredLiveMessageType function not found');
+  assert.ok(fnMatch[0].includes('LocalAgentModeSessions_$_onEvent'), 'must guard on LocalAgentModeSessions onEvent');
+  assert.ok(fnMatch[0].includes('LocalSessions_$_onEvent'), 'must guard on LocalSessions onEvent');
+});
+
 test('registerElectronAppListener degrades safely when electron app is unavailable', () => {
   const helpers = loadFrameFixHelpers({
     require(request) {
