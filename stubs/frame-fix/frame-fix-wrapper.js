@@ -389,6 +389,25 @@ try {
   console.log('[TMPDIR] Fixed: ' + vmTmpDir);
   console.log('[TMPDIR] os.tmpdir() patched');
   console.log('[VM_BUNDLE] Ready: ' + claudeVmBundle);
+
+  // The asar wraps all git commands with a "disclaimer" binary on macOS
+  // (Helpers/disclaimer git <args>). Since we spoof process.platform to
+  // "darwin", this codepath activates on Linux too. The binary doesn't
+  // exist in the Linux Electron distribution, causing ENOENT on every
+  // git operation (diff, status, etc). Create a transparent passthrough
+  // so the wrapper is a no-op — identical to what the asar's own
+  // non-darwin branch does (returns the command unchanged).
+  const disclaimerDir = path.join(path.dirname(process.resourcesPath), 'Helpers');
+  const disclaimerBin = path.join(disclaimerDir, 'disclaimer');
+  if (!fs.existsSync(disclaimerBin)) {
+    try {
+      fs.mkdirSync(disclaimerDir, { recursive: true, mode: 0o755 });
+      fs.writeFileSync(disclaimerBin, '#!/bin/sh\nexec "$@"\n', { mode: 0o755 });
+      console.log('[disclaimer] Created passthrough: ' + disclaimerBin);
+    } catch (de) {
+      console.warn('[disclaimer] Could not create passthrough: ' + de.message);
+    }
+  }
 } catch (e) {
   console.error('[TMPDIR] Setup failed:', e.message);
 }
