@@ -547,7 +547,7 @@ const SESSIONS_BASE = DIRS.claudeSessionsBase;
 
 console.log('[Cowork] Linux support enabled - VM will be emulated');
 
-const { isIgnoredLiveEventType } = require('../cowork/session_normalization.js');
+const { isIgnoredLiveEventType } = require('./cowork/session_normalization.js');
 
 function parseRequestedProcessId(args) {
   for (const arg of args) {
