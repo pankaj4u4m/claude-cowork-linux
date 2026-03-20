@@ -366,9 +366,13 @@ function readRemoteSessionIdFromBridgeState(localSessionId, deps) {
     return null;
   }
 
+  const defaultBridgePath = path.join(
+    process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'),
+    'Claude', 'bridge-state.json'
+  );
   const filePath = typeof bridgeStatePath === 'string' && bridgeStatePath.trim()
     ? bridgeStatePath
-    : path.join(os.homedir(), '.config', 'Claude', 'bridge-state.json');
+    : defaultBridgePath;
 
   for (let attempt = 0; attempt < BRIDGE_STATE_MAX_RETRIES; attempt++) {
     let raw;

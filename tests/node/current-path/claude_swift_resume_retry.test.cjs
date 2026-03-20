@@ -196,6 +196,7 @@ function runSwiftBridgeHarness(options) {
     env: {
       ...process.env,
       HOME: tempHome,
+      XDG_CONFIG_HOME: path.join(tempHome, '.config'),
       CLAUDE_COWORK_SESSIONS_API_AUTH_TOKEN: 'desktop-oauth-token',
       CLAUDE_COWORK_SESSIONS_API_BASE_URL: 'https://bridge.test',
     },
