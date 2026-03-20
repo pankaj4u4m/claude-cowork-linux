@@ -432,7 +432,7 @@ class SessionsApi {
   fetchBridgeCredentials(remoteSessionId, options) {
     // Fetch bridge credentials for dispatch mode.
     // POST /v1/code/sessions/{id}/bridge -> { worker_jwt, api_base_url, expires_in }
-    // Equivalent to HeA() in CLI binary 4449_initEnvLessBridgeCore.js
+    // Equivalent to CLI's initEnvLessBridgeCore (bridge initialization function)
     if (typeof remoteSessionId !== 'string' || !remoteSessionId.trim()) {
       return {
         success: false,

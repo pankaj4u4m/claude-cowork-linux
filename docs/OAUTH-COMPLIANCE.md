@@ -225,7 +225,7 @@ Even though our stubs don't handle tokens, trace logs could theoretically captur
 | Process authentication credentials in this layer | **Never** | All auth handling is in unmodified Anthropic code (renderer + CLI) |
 | Log token values | **Never** | `redactForLogs` strips all credential patterns before any log write |
 | Open non-Anthropic auth URLs | **Never** | `ALLOWED_AUTH_ORIGINS` allowlist enforced |
-| Use OAuth tokens to call Anthropic API directly | **One exception** (see section 6 below) | Single `/bridge` call to obtain short-lived worker JWT for CLI; equivalent to CLI's own `HeA()` |
+| Use OAuth tokens to call Anthropic API directly | **One exception** (see section 6 below) | Single `/bridge` call to obtain short-lived worker JWT for CLI; equivalent to CLI's own `initEnvLessBridgeCore` |
 
 ---
 
@@ -253,7 +253,7 @@ unmodified asar). This returns a short-lived `worker_jwt` that the CLI needs to 
 responses back to the Claude Cloud Relay (CCR) in dispatch mode (phone -> desktop -> CLI).
 
 **Equivalence to CLI behavior**: This is the same API call the CLI makes internally via
-`HeA()` in `4449_initEnvLessBridgeCore.js`. Same OAuth token (from asar's spawn env). Same
+`initEnvLessBridgeCore` (the CLI's internal bridge initialization function). Same OAuth token (from asar's spawn env). Same
 API endpoint. Same response format consumed by the same CLI binary. The orchestrator uses
 the token identically to how `initEnvLessBridgeCore` uses it — authenticating a call to an
 Anthropic API to obtain a short-lived credential for passing to the Anthropic CLI.
@@ -264,7 +264,7 @@ Anthropic API to obtain a short-lived credential for passing to the Anthropic CL
 3. Single API call to Anthropic's `/bridge` endpoint
 4. Short-lived `worker_jwt` returned (expires per `expires_in` field)
 5. JWT injected as `CLAUDE_CODE_SESSION_ACCESS_TOKEN` env var
-6. Consumed by CLI for CCR POST transport (`ktH`)
+6. Consumed by CLI for CCR POST transport (v1 hybrid transport)
 7. JWT refreshed before expiry via same endpoint, sent to CLI via stdin
 
 **What this does NOT do**:

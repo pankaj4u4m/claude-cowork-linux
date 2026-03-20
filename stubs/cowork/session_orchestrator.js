@@ -432,7 +432,7 @@ function readRemoteSessionIdFromBridgeState(localSessionId, deps) {
 }
 
 // Build the WebSocket SDK URL from apiBaseUrl for --sdk-url argument.
-// CLI's e$_(H) in 4444.js converts wss: -> https: and appends /events for POSTing.
+// CLI's SDK URL handler converts wss: -> https: and appends /events for POSTing.
 function buildSdkUrl(apiBaseUrl, remoteSessionId) {
   if (typeof apiBaseUrl !== 'string' || !apiBaseUrl.trim() ||
       typeof remoteSessionId !== 'string' || !remoteSessionId.trim()) {
@@ -445,11 +445,11 @@ function buildSdkUrl(apiBaseUrl, remoteSessionId) {
 // ============================================================================
 // TOKEN REFRESH CONSTANTS
 // ============================================================================
-// Matches CLI's fg$ scheduler in 4410.js: kH_ = 300000ms buffer, floor 30s
+// Matches CLI's bridge token refresh scheduler: 300s buffer before expiry, 30s floor
 const BRIDGE_REFRESH_BUFFER_MS = 300000;
 const BRIDGE_REFRESH_FLOOR_MS = 30000;
-const BRIDGE_REFRESH_MAX_FAILURES = 3;      // CLI's XI8 = 3
-const BRIDGE_REFRESH_RETRY_DELAY_MS = 60000; // CLI's vH_ = 60000
+const BRIDGE_REFRESH_MAX_FAILURES = 3;      // CLI abandons after 3 consecutive failures
+const BRIDGE_REFRESH_RETRY_DELAY_MS = 60000; // CLI retries after 60s on failure
 
 // ============================================================================
 // SESSION ORCHESTRATOR
