@@ -748,6 +748,48 @@ for (const sig of ['SIGTERM', 'SIGHUP', 'SIGINT']) {
   process.on(sig, () => gracefulQuit(`Received ${sig}`));
 }
 
+// ============================================================
+// SINGLE-INSTANCE LOCK + PROTOCOL URL FORWARDING
+// ============================================================
+// The asar takes the macOS codepath (open-url event) because we
+// spoof darwin. But Linux doesn't have macOS's Apple Event URL
+// routing — launching claude:// URLs spawns a NEW Electron process.
+// Fix: acquire a single-instance lock ourselves. When a second
+// instance launches (e.g. from a claude:// protocol redirect after
+// Google auth), extract the URL from argv, emit 'open-url' on the
+// app (which the asar IS listening for), and quit the duplicate.
+try {
+  const { app } = require('electron');
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) {
+    // We're the second instance — the first will get 'second-instance'
+    console.log('[SingleInstance] Another instance is running, quitting');
+    app.quit();
+  } else {
+    app.on('second-instance', (_event, argv, _workingDirectory) => {
+      // Find the claude:// URL in the argv of the second instance
+      const url = argv.find(a => a.startsWith('claude://'));
+      if (url) {
+        console.log('[SingleInstance] Forwarding protocol URL to open-url handler');
+        // Emit open-url so the asar's existing handler processes it
+        app.emit('open-url', { preventDefault() {} }, url);
+      }
+      // Focus the existing window
+      const { BrowserWindow } = require('electron');
+      const wins = BrowserWindow.getAllWindows();
+      if (wins.length > 0) {
+        const win = wins[0];
+        if (win.isMinimized()) win.restore();
+        win.show();
+        win.focus();
+      }
+    });
+    console.log('[SingleInstance] Lock acquired, protocol URL forwarding enabled');
+  }
+} catch (e) {
+  console.error('[SingleInstance] Failed to set up single-instance lock:', e.message);
+}
+
 Module.prototype.require = function(id) {
   // Intercept claude-swift to inject our Linux implementation
   if (id && id.includes('@ant/claude-swift')) {
