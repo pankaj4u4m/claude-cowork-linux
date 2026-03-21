@@ -176,13 +176,15 @@ function buildAuthHeaders(authToken, organizationUuid) {
   //   - sk-ant-sid* -> sessionKey cookie (legacy session tokens)
   //   - sk-ant-* -> Bearer token (API keys)
   if (typeof authToken !== 'string' || !authToken.trim()) {
+    console.warn('[sessions-api] buildAuthHeaders: token missing or empty (type=' + typeof authToken + ')');
     return {};
   }
 
   const normalizedToken = authToken.trim();
-  
+
   // Security: Reject tokens with CRLF characters to prevent header injection
   if (/[\r\n\0]/.test(normalizedToken)) {
+    console.warn('[sessions-api] buildAuthHeaders: token contains control characters, rejecting');
     return {};
   }
 
