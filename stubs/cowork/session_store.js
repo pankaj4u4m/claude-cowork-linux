@@ -141,11 +141,29 @@ function isSyntheticSessionCwd(targetPath, sessionData) {
   return processNames.some((processName) => targetPath === path.join('/home', processName));
 }
 
+// Cache for listLocalSessionMetadataFiles — the recursive readdirSync was the
+// #1 profiler hot spot (1.2s, scanning 1600+ files on every IPC round-trip).
+// Cache with 5s TTL; invalidated on session create/delete.
+let _metadataFileCache = null;
+let _metadataFileCacheRoot = null;
+let _metadataFileCacheTs = 0;
+const METADATA_CACHE_TTL_MS = 5000;
+
+// Also cache the basename→path index for O(1) lookups instead of .find()
+let _metadataFileIndex = null;
+
+function invalidateMetadataFileCache() {
+  _metadataFileCache = null;
+  _metadataFileIndex = null;
+  _metadataFileCacheTs = 0;
+}
+
 function listLocalSessionMetadataFiles(rootPath) {
-  // Recursively scan directory for session metadata files (*.json).
-  // Used during app startup to discover all existing sessions.
-  //
-  // Returns array of absolute paths to .json files.
+  const now = Date.now();
+  if (_metadataFileCache && _metadataFileCacheRoot === rootPath && (now - _metadataFileCacheTs) < METADATA_CACHE_TTL_MS) {
+    return _metadataFileCache;
+  }
+
   const pendingPaths = [rootPath];
   const metadataFiles = [];
 
@@ -170,6 +188,16 @@ function listLocalSessionMetadataFiles(rootPath) {
     }
   }
 
+  _metadataFileCache = metadataFiles;
+  _metadataFileCacheRoot = rootPath;
+  _metadataFileCacheTs = now;
+
+  // Build basename index for O(1) lookups
+  _metadataFileIndex = new Map();
+  for (const filePath of metadataFiles) {
+    _metadataFileIndex.set(path.basename(filePath), filePath);
+  }
+
   return metadataFiles;
 }
 
@@ -182,6 +210,15 @@ function findSessionMetadataPath(localAgentRoot, sessionId) {
   }
 
   const targetName = sessionId + '.json';
+
+  // Ensure cache is warm (populates _metadataFileIndex)
+  listLocalSessionMetadataFiles(localAgentRoot);
+
+  if (_metadataFileIndex) {
+    return _metadataFileIndex.get(targetName) || null;
+  }
+
+  // Fallback (should not reach here)
   const metadataFiles = listLocalSessionMetadataFiles(localAgentRoot);
   return metadataFiles.find((filePath) => path.basename(filePath) === targetName) || null;
 }
@@ -691,4 +728,5 @@ module.exports = {
   isLocalSessionMetadataFilePath,
   getSessionDirectory,
   detectJsonIndentation,
+  invalidateMetadataFileCache,
 };
