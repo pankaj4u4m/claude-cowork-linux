@@ -485,7 +485,7 @@ try {
   // non-darwin branch does (returns the command unchanged).
   const disclaimerDir = path.join(path.dirname(process.resourcesPath), 'Helpers');
   const disclaimerBin = path.join(disclaimerDir, 'disclaimer');
-  if (!fs.existsSync(disclaimerBin)) {
+  {
     try {
       fs.mkdirSync(disclaimerDir, { recursive: true, mode: 0o755 });
       // The disclaimer wrapper must resolve macOS binary paths to Linux equivalents.
@@ -513,7 +513,7 @@ try {
         'exec "$CMD" "$@"',
         '',
       ].join('\n'), { mode: 0o755 });
-      console.log('[disclaimer] Created passthrough: ' + disclaimerBin);
+      console.log('[disclaimer] Installed platform-aware wrapper: ' + disclaimerBin);
     } catch (de) {
       console.warn('[disclaimer] Could not create passthrough: ' + de.message);
     }
