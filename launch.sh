@@ -152,10 +152,14 @@ if [[ -d "$CLAUDE_CODE_DIR" ]]; then
 fi
 
 # --devtools flag opens DevTools + asset dumper on launch
+# --perf flag enables Chromium tracing + Node inspector for profiling
 _args=()
+_perf=false
 for arg in "$@"; do
   if [[ "$arg" == "--devtools" ]]; then
     export CLAUDE_DEVTOOLS=1
+  elif [[ "$arg" == "--perf" ]]; then
+    _perf=true
   else
     _args+=("$arg")
   fi
@@ -202,13 +206,30 @@ if ! dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesk
   PASSWORD_STORE="basic"
 fi
 
+# Build electron args
+_electron_args=(
+  "./${ASAR_FILE}"
+  --no-sandbox
+  --password-store="$PASSWORD_STORE"
+  --enable-features=GlobalShortcutsPortal
+)
+
+if [[ "$_perf" == true ]]; then
+  export CLAUDE_DEVTOOLS=1
+  _electron_args+=(
+    --inspect=9229
+  )
+  echo ""
+  echo "  PERF MODE"
+  echo "  Main process:  chrome://inspect (port 9229) -> Profiler tab"
+  echo "  Renderer:      DevTools will open -> Performance tab -> Record"
+  echo ""
+fi
+
 # Run electron with the repacked app.asar
 echo "Launching Claude Desktop (electron: $ELECTRON_BIN, password-store: $PASSWORD_STORE)..."
 "$ELECTRON_BIN" \
-  "./${ASAR_FILE}" \
-  --no-sandbox \
-  --password-store="$PASSWORD_STORE" \
-  --enable-features=GlobalShortcutsPortal \
+  "${_electron_args[@]}" \
   "$@" \
   2>&1 | tee -a "$LOG_DIR/startup.log"
 exit "${PIPESTATUS[0]}"
