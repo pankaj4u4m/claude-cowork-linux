@@ -19,6 +19,70 @@ const { createOverrideRegistry, matchOverride, extractEipcUuid, proactivelyRegis
 console.log('[Frame Fix] Wrapper v2.5 loaded');
 if (process.env.CLAUDE_DEVTOOLS === '1') console.log('[Frame Fix] DevTools mode enabled');
 
+// ── Bridge forwardEvent patch ──────────────────────────────────────────
+// The asar's sessions-bridge class has a forwardEvent method that drops
+// "result" and "stream_event" types. On macOS the VM's MITM proxy
+// forwards those to CCR instead. On Linux there's no proxy, so we patch
+// forwardEvent to stop dropping them — the bridge transport (already
+// connected) will POST them to CCR directly.
+//
+// Detection: the bridge class extends EventEmitter and subscribes to
+// "remote_session_start" immediately after creation. We intercept that
+// subscription to find the instance and patch its forwardEvent.
+(function patchBridgeForwardEvent() {
+  const EventEmitter = require('events').EventEmitter;
+  const origOn = EventEmitter.prototype.on;
+  let patched = false;
+
+  EventEmitter.prototype.on = function patchedOn(event) {
+    if (!patched && event === 'remote_session_start' && typeof this.forwardEvent === 'function') {
+      patched = true;
+      const originalForwardEvent = this.forwardEvent.bind(this);
+      const bridge = this;
+
+      this.forwardEvent = async function patchedForwardEvent(e) {
+        // The original filter drops result/stream_event. We need those
+        // forwarded on Linux since there's no VM proxy to handle it.
+        const session = bridge.activeSessions && bridge.activeSessions.get(e.sessionId);
+        if (!session || e.type !== 'message' || !e.message) return;
+
+        const msg = e.message;
+        const msgType = msg.type;
+
+        // For types the original would NOT drop, call the original
+        if (msgType !== 'result' && msgType !== 'stream_event') {
+          return originalForwardEvent(e);
+        }
+
+        // For result/stream_event: POST via the bridge transport directly
+        if (!session.transport) {
+          console.warn('[bridge-patch] No transport for session ' + e.sessionId + ', dropping ' + msgType);
+          return;
+        }
+
+        // Build event with userMessageUuid if present
+        let eventPayload = msg;
+        if (e.userMessageUuid && msgType !== 'user') {
+          eventPayload = { ...msg, user_message_uuid: e.userMessageUuid };
+        }
+
+        try {
+          // writeEvent wraps in { payload: { ...event, uuid } } and
+          // enqueues for batch POST to /worker/events
+          session.transport.writeEvent(eventPayload);
+        } catch (err) {
+          console.warn('[bridge-patch] Failed to write ' + msgType + ': ' + (err && err.message));
+        }
+      };
+
+      console.log('[bridge-patch] forwardEvent patched on sessions-bridge instance');
+      // Restore original .on to avoid overhead on all future subscriptions
+      EventEmitter.prototype.on = origOn;
+    }
+    return origOn.apply(this, arguments);
+  };
+})();
+
 // ── Asset Dumper (--devtools only) ──────────────────────────────────────
 // Saves JS/CSS/JSON from claude.ai and *.anthropic.com to:
 //   ~/.local/state/claude-cowork/logs/webapp-assets/
