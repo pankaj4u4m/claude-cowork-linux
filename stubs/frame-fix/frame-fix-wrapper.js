@@ -60,19 +60,25 @@ if (process.env.CLAUDE_DEVTOOLS === '1') console.log('[Frame Fix] DevTools mode 
           return;
         }
 
-        // Build event with userMessageUuid if present
+        // Build event with userMessageUuid if present (matches original logic)
         let eventPayload = msg;
         if (e.userMessageUuid && msgType !== 'user') {
           eventPayload = { ...msg, user_message_uuid: e.userMessageUuid };
         }
 
-        try {
-          // writeEvent wraps in { payload: { ...event, uuid } } and
-          // enqueues for batch POST to /worker/events
-          session.transport.writeEvent(eventPayload);
-        } catch (err) {
-          console.warn('[bridge-patch] Failed to write ' + msgType + ': ' + (err && err.message));
-        }
+        // Serialize writes through the session's writeQueue (same pattern
+        // as the original forwardEvent) to prevent interleaving.
+        session.writeQueue = (session.writeQueue || Promise.resolve()).then(async () => {
+          try {
+            if (session.transport) {
+              await session.transport.write(eventPayload);
+            }
+          } catch (err) {
+            console.warn('[bridge-patch] Failed to write ' + msgType + ' for session '
+              + e.sessionId + ': ' + (err && err.message));
+          }
+        });
+        await session.writeQueue;
       };
 
       console.log('[bridge-patch] forwardEvent patched on sessions-bridge instance');
