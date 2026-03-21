@@ -218,6 +218,7 @@ if [[ "$_perf" == true ]]; then
   export CLAUDE_DEVTOOLS=1
   _electron_args+=(
     --inspect=9229
+    --remote-debugging-port=9222
   )
   echo ""
   echo "  PERF MODE"
