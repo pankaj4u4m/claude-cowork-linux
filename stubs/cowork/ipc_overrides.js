@@ -315,6 +315,174 @@ function createOverrideRegistry(getProcessState) {
 
     // CoworkSpaces — not implemented on Linux
     'CoworkSpaces_$_getAllSpaces': async () => ([]),
+
+    // ================================================================
+    // LocalAgentModeSessions — Dispatch/Bridge handlers
+    // The asar's own bridge transport manages the CCR connection.
+    // These handlers provide the webapp-expected API surface so IPC
+    // calls don't fail with "No handler registered" errors.
+    // ================================================================
+
+    'LocalAgentModeSessions_$_abandonBridgeEnvironment': async (_event, ...args) => {
+      console.log('[ipc:abandonBridgeEnvironment] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_deleteBridgeAgentMemory': async (_event, ...args) => {
+      console.log('[ipc:deleteBridgeAgentMemory] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_deleteBridgeSession': async (_event, ...args) => {
+      console.log('[ipc:deleteBridgeSession] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_getBridgeConsent': async (_event, ...args) => {
+      console.log('[ipc:getBridgeConsent] called');
+      return { consented: true };
+    },
+
+    'LocalAgentModeSessions_$_getSessionsBridgeEnabled': async () => {
+      console.log('[ipc:getSessionsBridgeEnabled] called');
+      return false;
+    },
+
+    'LocalAgentModeSessions_$_kickBridgePoll': async (_event, ...args) => {
+      console.log('[ipc:kickBridgePoll] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_onBridgePermissionPreflight': async (_event, ...args) => {
+      console.log('[ipc:onBridgePermissionPreflight] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_resetBridge': async (_event, ...args) => {
+      console.log('[ipc:resetBridge] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_resetBridgeSession': async (_event, ...args) => {
+      console.log('[ipc:resetBridgeSession] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_respondBridgePermissionPreflight': async (_event, ...args) => {
+      console.log('[ipc:respondBridgePermissionPreflight] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_sessionsBridgeStatus': async () => {
+      console.log('[ipc:sessionsBridgeStatus] called');
+      return { status: 'disconnected', enabled: false };
+    },
+
+    'LocalAgentModeSessions_$_setSessionsBridgeEnabled': async (_event, enabled) => {
+      console.log('[ipc:setSessionsBridgeEnabled] enabled=' + enabled);
+      return null;
+    },
+
+    // ================================================================
+    // MCP handlers — Desktop MCP integration (not CLI MCP)
+    // ================================================================
+
+    'LocalAgentModeSessions_$_mcpCallTool': async (_event, ...args) => {
+      console.log('[ipc:mcpCallTool] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_mcpListResources': async (_event, ...args) => {
+      console.log('[ipc:mcpListResources] called');
+      return [];
+    },
+
+    'LocalAgentModeSessions_$_mcpReadResource': async (_event, ...args) => {
+      console.log('[ipc:mcpReadResource] called');
+      return null;
+    },
+
+    // ================================================================
+    // Permissions / Folders — Linux has no TCC or Chrome extension model
+    // ================================================================
+
+    'LocalAgentModeSessions_$_requestFolderTccAccess': async (_event, ...args) => {
+      console.log('[ipc:requestFolderTccAccess] called (auto-granted on Linux)');
+      return { granted: true };
+    },
+
+    'LocalAgentModeSessions_$_setChromePermissionMode': async (_event, mode) => {
+      console.log('[ipc:setChromePermissionMode] mode=' + mode);
+      return null;
+    },
+
+    // ================================================================
+    // Session management — event relay and session lifecycle
+    // ================================================================
+
+    'LocalAgentModeSessions_$_onCoworkFromMain': async (_event, ...args) => {
+      // Main process event relay to webapp — acknowledged
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_onRemoteSessionStart': async (_event, ...args) => {
+      console.log('[ipc:onRemoteSessionStart] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_openOutputsDir': async (_event, sessionId) => {
+      console.log('[ipc:openOutputsDir] sessionId=' + sessionId);
+      // Open the session's outputs directory in the file manager
+      const orchestrator = global.__coworkSessionOrchestrator;
+      const dirs = global.__coworkDirs;
+      if (dirs && typeof sessionId === 'string' && sessionId.trim()) {
+        const outputsDir = path.join(dirs.claudeLocalAgentRoot, 'outputs');
+        try {
+          if (fs.existsSync(outputsDir)) {
+            xdgOpen(outputsDir);
+            return null;
+          }
+        } catch (_) {}
+      }
+      // Fallback: open the local-agent-mode-sessions root
+      if (dirs) {
+        try { xdgOpen(dirs.claudeLocalAgentRoot); } catch (_) {}
+      }
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_setDraftSessionFolders': async (_event, folders) => {
+      console.log('[ipc:setDraftSessionFolders] folders=' + JSON.stringify(folders));
+      return null;
+    },
+
+    // ================================================================
+    // Plugin/Skill — directory listing and skill sync
+    // ================================================================
+
+    'LocalAgentModeSessions_$_respondDirectoryServers': async (_event, ...args) => {
+      console.log('[ipc:respondDirectoryServers] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_respondPluginSearch': async (_event, ...args) => {
+      console.log('[ipc:respondPluginSearch] called');
+      return null;
+    },
+
+    'LocalAgentModeSessions_$_syncSkills': async (_event, ...args) => {
+      console.log('[ipc:syncSkills] called');
+      return null;
+    },
+
+    // ================================================================
+    // Sharing — not supported on Linux desktop
+    // ================================================================
+
+    'LocalAgentModeSessions_$_shareSession': async (_event, sessionId) => {
+      console.log('[ipc:shareSession] sessionId=' + sessionId + ' (not supported on Linux)');
+      return null;
+    },
   };
 }
 

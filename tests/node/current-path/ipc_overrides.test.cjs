@@ -201,6 +201,37 @@ test('override registry covers all known broken handlers', () => {
     'MainWindowTitleBar_$_requestMainMenuPopup',
     'BrowserNavigation_$_requestMainMenuPopup',
     'CoworkSpaces_$_getAllSpaces',
+    // Phase 4: Dispatch/Bridge
+    'LocalAgentModeSessions_$_abandonBridgeEnvironment',
+    'LocalAgentModeSessions_$_deleteBridgeAgentMemory',
+    'LocalAgentModeSessions_$_deleteBridgeSession',
+    'LocalAgentModeSessions_$_getBridgeConsent',
+    'LocalAgentModeSessions_$_getSessionsBridgeEnabled',
+    'LocalAgentModeSessions_$_kickBridgePoll',
+    'LocalAgentModeSessions_$_onBridgePermissionPreflight',
+    'LocalAgentModeSessions_$_resetBridge',
+    'LocalAgentModeSessions_$_resetBridgeSession',
+    'LocalAgentModeSessions_$_respondBridgePermissionPreflight',
+    'LocalAgentModeSessions_$_sessionsBridgeStatus',
+    'LocalAgentModeSessions_$_setSessionsBridgeEnabled',
+    // Phase 4: MCP
+    'LocalAgentModeSessions_$_mcpCallTool',
+    'LocalAgentModeSessions_$_mcpListResources',
+    'LocalAgentModeSessions_$_mcpReadResource',
+    // Phase 4: Permissions/Folders
+    'LocalAgentModeSessions_$_requestFolderTccAccess',
+    'LocalAgentModeSessions_$_setChromePermissionMode',
+    // Phase 4: Session Management
+    'LocalAgentModeSessions_$_onCoworkFromMain',
+    'LocalAgentModeSessions_$_onRemoteSessionStart',
+    'LocalAgentModeSessions_$_openOutputsDir',
+    'LocalAgentModeSessions_$_setDraftSessionFolders',
+    // Phase 4: Plugin/Skill
+    'LocalAgentModeSessions_$_respondDirectoryServers',
+    'LocalAgentModeSessions_$_respondPluginSearch',
+    'LocalAgentModeSessions_$_syncSkills',
+    // Phase 4: Sharing
+    'LocalAgentModeSessions_$_shareSession',
   ];
   for (const suffix of expectedSuffixes) {
     const handler = matchOverride('test_$_' + suffix, registry);
@@ -340,4 +371,162 @@ test('override handlers return fresh objects for object results (not shared refe
   const b = await handler();
   assert.notEqual(a, b, 'handlers should return new objects each call');
   assert.deepEqual(a, b);
+});
+
+// ================================================================
+// Phase 4: Dispatch/Bridge handler tests
+// ================================================================
+
+test('getBridgeConsent returns consented shape', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_getBridgeConsent', registry);
+  const result = await handler(null);
+  assert.deepEqual(result, { consented: true });
+});
+
+test('getSessionsBridgeEnabled returns false', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_getSessionsBridgeEnabled', registry);
+  const result = await handler();
+  assert.equal(result, false);
+});
+
+test('sessionsBridgeStatus returns disconnected shape', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_sessionsBridgeStatus', registry);
+  const result = await handler();
+  assert.equal(result.status, 'disconnected');
+  assert.equal(result.enabled, false);
+});
+
+test('bridge no-op handlers return null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const noOpSuffixes = [
+    'LocalAgentModeSessions_$_abandonBridgeEnvironment',
+    'LocalAgentModeSessions_$_deleteBridgeAgentMemory',
+    'LocalAgentModeSessions_$_deleteBridgeSession',
+    'LocalAgentModeSessions_$_kickBridgePoll',
+    'LocalAgentModeSessions_$_onBridgePermissionPreflight',
+    'LocalAgentModeSessions_$_resetBridge',
+    'LocalAgentModeSessions_$_resetBridgeSession',
+    'LocalAgentModeSessions_$_respondBridgePermissionPreflight',
+    'LocalAgentModeSessions_$_setSessionsBridgeEnabled',
+  ];
+  for (const suffix of noOpSuffixes) {
+    const handler = matchOverride('test_$_' + suffix, registry);
+    assert.ok(handler, 'missing handler: ' + suffix);
+    const result = await handler(null);
+    assert.equal(result, null, suffix + ' should return null');
+  }
+});
+
+// ================================================================
+// Phase 4: MCP handler tests
+// ================================================================
+
+test('mcpCallTool returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_mcpCallTool', registry);
+  const result = await handler(null, 'toolName', { arg: 'value' });
+  assert.equal(result, null);
+});
+
+test('mcpListResources returns empty array', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_mcpListResources', registry);
+  const result = await handler(null);
+  assert.deepEqual(result, []);
+});
+
+test('mcpReadResource returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_mcpReadResource', registry);
+  const result = await handler(null, 'resource-uri');
+  assert.equal(result, null);
+});
+
+// ================================================================
+// Phase 4: Permissions handler tests
+// ================================================================
+
+test('requestFolderTccAccess returns granted on Linux', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_requestFolderTccAccess', registry);
+  const result = await handler(null, '/some/path');
+  assert.deepEqual(result, { granted: true });
+});
+
+test('setChromePermissionMode returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_setChromePermissionMode', registry);
+  const result = await handler(null, 'auto');
+  assert.equal(result, null);
+});
+
+// ================================================================
+// Phase 4: Session management handler tests
+// ================================================================
+
+test('onCoworkFromMain returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_onCoworkFromMain', registry);
+  const result = await handler(null, { type: 'test' });
+  assert.equal(result, null);
+});
+
+test('onRemoteSessionStart returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_onRemoteSessionStart', registry);
+  const result = await handler(null, 'session-123');
+  assert.equal(result, null);
+});
+
+test('openOutputsDir returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_openOutputsDir', registry);
+  const result = await handler(null, 'session-123');
+  assert.equal(result, null);
+});
+
+test('setDraftSessionFolders returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_setDraftSessionFolders', registry);
+  const result = await handler(null, ['/home/user/project']);
+  assert.equal(result, null);
+});
+
+// ================================================================
+// Phase 4: Plugin/Skill handler tests
+// ================================================================
+
+test('respondDirectoryServers returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_respondDirectoryServers', registry);
+  const result = await handler(null);
+  assert.equal(result, null);
+});
+
+test('respondPluginSearch returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_respondPluginSearch', registry);
+  const result = await handler(null);
+  assert.equal(result, null);
+});
+
+test('syncSkills returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_syncSkills', registry);
+  const result = await handler(null);
+  assert.equal(result, null);
+});
+
+// ================================================================
+// Phase 4: Sharing handler test
+// ================================================================
+
+test('shareSession returns null on Linux', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_LocalAgentModeSessions_$_shareSession', registry);
+  const result = await handler(null, 'session-123');
+  assert.equal(result, null);
 });

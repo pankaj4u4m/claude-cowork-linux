@@ -44,6 +44,14 @@ if [ -d "stubs/cowork" ]; then
   cp -f stubs/cowork/*.js "linux-app-extracted/cowork/"
 fi
 
+# Install plugin permission shim to Electron resources dir.
+# The asar copies this to <sessionStorageDir>/shim-lib/shim.sh at session start.
+_RESOURCES_DIR="$(dirname "$ELECTRON_BIN")/resources"
+if [ -f "stubs/cowork/cowork-plugin-shim.sh" ] && [ -d "$_RESOURCES_DIR" ]; then
+  cp -f stubs/cowork/cowork-plugin-shim.sh "$_RESOURCES_DIR/cowork-plugin-shim.sh"
+  chmod +x "$_RESOURCES_DIR/cowork-plugin-shim.sh"
+fi
+
 # ============================================================
 # Linux UI Fixes (applied before every repack)
 # ============================================================
