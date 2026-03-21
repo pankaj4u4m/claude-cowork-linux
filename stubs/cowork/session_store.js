@@ -700,19 +700,12 @@ class SessionStore {
       };
     }
 
-    for (const metadataPath of listLocalSessionMetadataFiles(this._localAgentRoot)) {
-      let serializedValue;
-      try {
-        serializedValue = fs.readFileSync(metadataPath, 'utf8');
-      } catch (_) {
-        continue;
-      }
-
-      const normalizedValue = this.normalizeSerializedMetadata(metadataPath, serializedValue);
-      if (normalizedValue !== serializedValue) {
-        originalWriteFileSync(metadataPath, normalizedValue, 'utf8');
-      }
-    }
+    // Normalize session metadata lazily on first read, not eagerly at startup.
+    // The write-time guards (fs.writeFileSync/writeFile wrappers above) ensure
+    // all future writes are normalized. For reads of not-yet-normalized files,
+    // normalizeSerializedMetadata runs at access time via getSessionInfo/
+    // observeSessionRead. The eager loop was reading all 68 session files
+    // (with full JSON parse + stringify comparison) on every app launch.
   }
 }
 
