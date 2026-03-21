@@ -1061,6 +1061,51 @@ Module.prototype.require = function(id) {
     }
     installLinuxMenuInterceptors(module);
 
+    // ── Portal GlobalShortcuts (Wayland) ────────────────────────────────
+    // Electron's globalShortcut.register() uses X11 XGrabKey which silently
+    // fails on Wayland. Wrap it to route through xdg-desktop-portal instead.
+    // On X11, leave the original alone — it works natively.
+    if (REAL_PLATFORM === 'linux'
+        && (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland')
+        && module.globalShortcut) {
+      try {
+        const { createPortalShortcuts } = require('./cowork/portal_shortcuts.js');
+        const portal = createPortalShortcuts();
+        if (portal.isAvailable()) {
+          const origRegister = module.globalShortcut.register.bind(module.globalShortcut);
+          const origUnregister = module.globalShortcut.unregister.bind(module.globalShortcut);
+          const origUnregisterAll = module.globalShortcut.unregisterAll.bind(module.globalShortcut);
+          const origIsRegistered = module.globalShortcut.isRegistered.bind(module.globalShortcut);
+
+          module.globalShortcut.register = function(accelerator, callback) {
+            portal.register(accelerator, callback);
+            return true; // Match Electron's sync return
+          };
+          module.globalShortcut.unregister = function(accelerator) {
+            portal.unregister(accelerator);
+          };
+          module.globalShortcut.unregisterAll = function() {
+            portal.unregisterAll();
+          };
+          module.globalShortcut.isRegistered = function(accelerator) {
+            return portal.isRegistered(accelerator);
+          };
+
+          // Clean up on quit
+          const quitApp = resolveElectronApp(module);
+          if (quitApp) {
+            quitApp.on('will-quit', () => portal.destroy());
+          }
+
+          console.log('[Frame Fix] Global shortcuts routed through xdg-desktop-portal');
+        } else {
+          console.log('[Frame Fix] GlobalShortcuts portal not available, using Electron default');
+        }
+      } catch (e) {
+        console.warn('[Frame Fix] Portal shortcuts setup failed:', e.message);
+      }
+    }
+
   }
 
   return module;
