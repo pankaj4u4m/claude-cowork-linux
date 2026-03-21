@@ -316,6 +316,18 @@ function createOverrideRegistry(getProcessState) {
     // CoworkSpaces — not implemented on Linux
     'CoworkSpaces_$_getAllSpaces': async () => ([]),
 
+    // Startup — Linux has no macOS login items; report disabled
+    'Startup_$_isStartupOnLoginEnabled': async () => false,
+    'Startup_$_setStartupOnLoginEnabled': async (_event, enabled) => {
+      console.log('[ipc:setStartupOnLoginEnabled] enabled=' + enabled + ' (no-op on Linux)');
+      return null;
+    },
+    'Startup_$_isMenuBarEnabled': async () => false,
+    'Startup_$_setMenuBarEnabled': async (_event, enabled) => {
+      console.log('[ipc:setMenuBarEnabled] enabled=' + enabled + ' (no-op on Linux)');
+      return null;
+    },
+
     // ================================================================
     // LocalAgentModeSessions — Dispatch/Bridge handlers
     // The asar's own bridge transport manages the CCR connection.

@@ -488,7 +488,31 @@ try {
   if (!fs.existsSync(disclaimerBin)) {
     try {
       fs.mkdirSync(disclaimerDir, { recursive: true, mode: 0o755 });
-      fs.writeFileSync(disclaimerBin, '#!/bin/sh\nexec "$@"\n', { mode: 0o755 });
+      // The disclaimer wrapper must resolve macOS binary paths to Linux equivalents.
+      // The asar constructs paths like claude.app/Contents/MacOS/claude because
+      // we spoof darwin. Without this redirect, exec hits "Exec format error"
+      // on the arm64 Mach-O binary and marketplace/plugin operations fail (exit 126).
+      fs.writeFileSync(disclaimerBin, [
+        '#!/bin/sh',
+        'CMD="$1"',
+        'shift',
+        'case "$CMD" in',
+        '  *claude.app/Contents/MacOS/claude|*claude.app/Contents/MacOS/Claude)',
+        '    for c in \\',
+        '      "$HOME/.local/bin/claude" \\',
+        '      "$HOME/.local/share/mise/shims/claude" \\',
+        '      "$HOME/.asdf/shims/claude" \\',
+        '      "/usr/local/bin/claude" \\',
+        '      "/usr/bin/claude"; do',
+        '      [ -x "$c" ] && exec "$c" "$@"',
+        '    done',
+        '    echo "disclaimer: no Linux claude binary found" >&2',
+        '    exit 1',
+        '    ;;',
+        'esac',
+        'exec "$CMD" "$@"',
+        '',
+      ].join('\n'), { mode: 0o755 });
       console.log('[disclaimer] Created passthrough: ' + disclaimerBin);
     } catch (de) {
       console.warn('[disclaimer] Could not create passthrough: ' + de.message);

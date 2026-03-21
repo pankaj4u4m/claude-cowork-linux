@@ -44,12 +44,19 @@ if [ -d "stubs/cowork" ]; then
   cp -f stubs/cowork/*.js "linux-app-extracted/cowork/"
 fi
 
-# Install plugin permission shim to Electron resources dir.
-# The asar copies this to <sessionStorageDir>/shim-lib/shim.sh at session start.
-_RESOURCES_DIR="$(dirname "$ELECTRON_BIN")/resources"
-if [ -f "stubs/cowork/cowork-plugin-shim.sh" ] && [ -d "$_RESOURCES_DIR" ]; then
-  cp -f stubs/cowork/cowork-plugin-shim.sh "$_RESOURCES_DIR/cowork-plugin-shim.sh"
-  chmod +x "$_RESOURCES_DIR/cowork-plugin-shim.sh"
+# Install plugin permission shim so the asar can find it.
+# The asar resolves the shim from its own resources/ directory (inside the asar),
+# so we copy it into the extracted tree before repacking. Also copy to Electron's
+# resources dir as a fallback for process.resourcesPath lookups.
+if [ -f "stubs/cowork/cowork-plugin-shim.sh" ]; then
+  mkdir -p "linux-app-extracted/resources"
+  cp -f stubs/cowork/cowork-plugin-shim.sh "linux-app-extracted/resources/cowork-plugin-shim.sh"
+  chmod +x "linux-app-extracted/resources/cowork-plugin-shim.sh"
+  _RESOURCES_DIR="$(dirname "$ELECTRON_BIN")/resources"
+  if [ -d "$_RESOURCES_DIR" ]; then
+    cp -f stubs/cowork/cowork-plugin-shim.sh "$_RESOURCES_DIR/cowork-plugin-shim.sh"
+    chmod +x "$_RESOURCES_DIR/cowork-plugin-shim.sh"
+  fi
 fi
 
 # ============================================================

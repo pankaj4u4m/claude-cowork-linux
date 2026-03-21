@@ -232,6 +232,11 @@ test('override registry covers all known broken handlers', () => {
     'LocalAgentModeSessions_$_syncSkills',
     // Phase 4: Sharing
     'LocalAgentModeSessions_$_shareSession',
+    // Startup
+    'Startup_$_isStartupOnLoginEnabled',
+    'Startup_$_setStartupOnLoginEnabled',
+    'Startup_$_isMenuBarEnabled',
+    'Startup_$_setMenuBarEnabled',
   ];
   for (const suffix of expectedSuffixes) {
     const handler = matchOverride('test_$_' + suffix, registry);
@@ -528,5 +533,37 @@ test('shareSession returns null on Linux', async () => {
   const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
   const handler = matchOverride('test_$_LocalAgentModeSessions_$_shareSession', registry);
   const result = await handler(null, 'session-123');
+  assert.equal(result, null);
+});
+
+// ================================================================
+// Startup handler tests
+// ================================================================
+
+test('isStartupOnLoginEnabled returns false on Linux', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_Startup_$_isStartupOnLoginEnabled', registry);
+  const result = await handler();
+  assert.equal(result, false);
+});
+
+test('isMenuBarEnabled returns false on Linux', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_Startup_$_isMenuBarEnabled', registry);
+  const result = await handler();
+  assert.equal(result, false);
+});
+
+test('setStartupOnLoginEnabled returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_Startup_$_setStartupOnLoginEnabled', registry);
+  const result = await handler(null, true);
+  assert.equal(result, null);
+});
+
+test('setMenuBarEnabled returns null', async () => {
+  const registry = createOverrideRegistry(() => ({ running: false, exitCode: 0 }));
+  const handler = matchOverride('test_$_Startup_$_setMenuBarEnabled', registry);
+  const result = await handler(null, true);
   assert.equal(result, null);
 });
