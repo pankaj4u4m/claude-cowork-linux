@@ -153,13 +153,12 @@ install_dependencies() {
 setup_repo() {
     if git -C "$INSTALL_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         log_info "Updating existing installation..."
-        git -C "$INSTALL_DIR" pull --ff-only 2>/dev/null || log_info "Local modifications present, using existing version"
+        git -C "$INSTALL_DIR" pull --ff-only 2>/dev/null \
+            || log_info "Local repo has modifications, stubs will be synced from source"
         log_success "Repository updated"
     else
-        # Remove stale non-git install dir if present
         if [[ -d "$INSTALL_DIR" ]]; then
-            confirm_destructive_removal "$INSTALL_DIR" "Removing previous (non-git) installation at $INSTALL_DIR."
-            rm -rf "$INSTALL_DIR"
+            log_info "Existing non-git install dir found, will overlay"
         fi
         log_info "Cloning claude-cowork-linux to $INSTALL_DIR..."
         mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -357,11 +356,7 @@ extract_archive() {
     local asar_file="$claude_app/Contents/Resources/app.asar"
     [[ -f "$asar_file" ]] || die "app.asar not found at: $asar_file"
 
-    # Extract asar into linux-app-extracted/
-    if [[ -d "$target_dir" ]]; then
-        confirm_destructive_removal "$target_dir" "Removing previous linux-app-extracted at $target_dir."
-        rm -rf "$target_dir"
-    fi
+    # Extract on top of existing tree (overwrites stale files, preserves extras)
     log_info "Extracting app.asar..."
     asar extract "$asar_file" "$target_dir" || die "Failed to extract app.asar"
 
