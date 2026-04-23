@@ -522,6 +522,20 @@ class SessionOrchestrator {
     ) {
       hostCommand = resolveClaudeBinaryPath();
       trace('Translated command: ' + normalizedCommand + ' -> ' + hostCommand);
+      } else if (
+      normalizedCommand === 'bash' ||
+      commandBasename === 'bash'
+    ) {
+      const bashCandidates = ['/usr/bin/bash', '/bin/bash'];
+      hostCommand = bashCandidates.find((c) => fs.existsSync(c));
+      if (!hostCommand) {
+        trace('SECURITY: bash requested but not found on host');
+        if (typeof onError === 'function') {
+          onError(processId, 'bash not found', '');
+        }
+        return { success: false, error: 'bash not found' };
+      }
+      trace('Translated bash command: ' + normalizedCommand + ' -> ' + hostCommand);
     } else if (allowedPrefixes.some((prefix) => normalizedCommand.startsWith(prefix))) {
       if (fs.existsSync(normalizedCommand)) {
         hostCommand = normalizedCommand;
